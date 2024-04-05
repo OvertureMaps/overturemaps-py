@@ -3,7 +3,7 @@ description: Create a report to help us improve
 title: "[Bug report]"
 labels: ["bug"]
 projects: ["Add project"]
-assignees: bonkles
+assignees: jwass
 body:
   - type: textarea
     id: what-happened
