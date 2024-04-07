@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "overture"
+version = "0.1.0"
+description = "Python tools for interacting with Overture Maps (overturemaps.org) data."
+authors = ["Jacob Wasserman <jwasserman@meta.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
