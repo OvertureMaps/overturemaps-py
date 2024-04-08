@@ -76,7 +76,18 @@ def get_writer(output_format, path, schema):
         writer = GeoJSONWriter(path)
     elif output_format == "geojsonseq":
         writer = GeoJSONSeqWriter(path)
-    elif output_format == "parquet":
+    elif output_format == "geoparquet":
+        # Update the geoparquet metadata to remove the file-level bbox which
+        # will no longer apply to this file. Since we cannot write the field at
+        # the end, just remove it as it's optional. Let the per-row bounding
+        # boxes do all the work.
+        metadata = schema.metadata
+        geo = json.loads(metadata[b"geo"])
+        for column in geo["columns"].values():
+            column.pop("bbox")
+        metadata[b"geo"] = json.dumps(geo).encode("utf-8")
+        schema = schema.with_metadata(metadata)
+
         writer = pq.ParquetWriter(path, schema)
     return writer
 
@@ -104,7 +115,7 @@ def cli():
 
 @cli.command()
 @click.option("--bbox", required=False, type=BboxParamType())
-@click.option("-f", "output_format", type=click.Choice(["geojson", "geojsonseq", "parquet"]), required=True)
+@click.option("-f", "output_format", type=click.Choice(["geojson", "geojsonseq", "geoparquet"]), required=True)
 @click.option("-o", "--output", required=False, type=click.Path())
 @click.option(
     "-t",
@@ -132,7 +143,8 @@ def copy(reader, writer, limit: int = None):
             batch = reader.read_next_batch()
         except StopIteration:
             break
-        writer.write_batch(batch)
+        if batch.num_rows > 0:
+            writer.write_batch(batch)
 
 
 class BaseGeoJSONWriter:
