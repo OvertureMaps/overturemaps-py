@@ -27,7 +27,7 @@ Command-line options:
 * `bbox` (optional): west, south, east, north longitude and latitude coordinates. When omitted the
 entire dataset for the specified type will be downloaded
 * `--output`/`-o` (optional): Location of output file. When omitted output will be written to stdout.
-* `-f` (required: one of "geojson", "geojsonseq", "parquet"): output format
+* `-f` (required: one of "geojson", "geojsonseq", "geoparquet"): output format
 * `--type`/`-t` (required): The Overture map data type to be downloaded. Examples of types are `building`
 for building footprints, `place` for POI places data, etc. Run `overturemaps download --help` for the
 complete list of allowed types
