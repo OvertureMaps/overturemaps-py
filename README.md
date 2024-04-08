@@ -10,7 +10,7 @@ until a stable release, but we will keep the documentation here up-to-date.
 Quick Overview:
 
 ```
-$ overturemaps download --bbox=-71.058,42.363,-71.068,42.353 -o boston.geojson -f geojson -t building
+$ overturemaps download --bbox=-71.068,42.353,-71.058,42.363 -o boston.geojson -f geojson -t building
 ```
 
 This command will download the building footprints in the specific bounding box
