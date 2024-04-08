@@ -16,9 +16,14 @@ $ overturemaps download --bbox=-71.058,42.363,-71.068,42.353 -o boston.geojson -
 This command will download the building footprints in the specific bounding box
 as GeoJSON and save to a file named "boston.geojson"
 
-### Download command options
+#### `download`
+There is currently one option to the `overturemaps` utility, `download`.
 
-Download allows the following options:
+The `download` command option can download Overture Maps data into a few different file formats and
+from an optional bounding box. The data is streamed out as it is read and can handle arbitrarily
+large bounding boxes or the entire datset.
+
+Command-line options:
 * `bbox` (optional): west, south, east, north longitude and latitude coordinates. When omitted the
 entire dataset for the specified type will be downloaded
 * `--output`/`-o` (optional): Location of output file. When omitted output will be written to stdout.
