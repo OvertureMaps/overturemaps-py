@@ -1,12 +1,10 @@
 """
-Extract features from a Parquet dataset in a specified bounding box
+Overture Maps (overturemaps.org) command line utility.
 
-With a parquet dataset that has the per-row bounding boxes, we can quickly
-sub-select within a known region
+Currently provides the ability to extract features from an Overture dataset in a
+specified bounding box in a few different file formats.
 
 """
-
-import itertools
 import json
 import os
 import sys
@@ -21,6 +19,9 @@ import pyarrow.parquet as pq
 import shapely.wkb
 
 
+# Map of sub-partition "type" to parent partition "theme" for forming the
+# complete s3 path. Could be discovered by reading from the top-level s3
+# location but this allows to only read the files in the necessary partition.
 _theme_type_mapping = {
     "locality": "admins",
     "locality_area": "admins",
@@ -47,6 +48,9 @@ def _dataset_path(overture_type: str) -> str:
 
 
 def record_batch_reader(path, bbox=None) -> Optional[pa.RecordBatchReader]:
+    """
+    Return a pyarrow RecordBatchReader for the desired bounding box and s3 path
+    """
     if bbox:
         xmin, ymin, xmax, ymax = bbox
         filter = (
@@ -72,7 +76,18 @@ def get_writer(output_format, path, schema):
         writer = GeoJSONWriter(path)
     elif output_format == "geojsonseq":
         writer = GeoJSONSeqWriter(path)
-    elif output_format == "parquet":
+    elif output_format == "geoparquet":
+        # Update the geoparquet metadata to remove the file-level bbox which
+        # will no longer apply to this file. Since we cannot write the field at
+        # the end, just remove it as it's optional. Let the per-row bounding
+        # boxes do all the work.
+        metadata = schema.metadata
+        geo = json.loads(metadata[b"geo"])
+        for column in geo["columns"].values():
+            column.pop("bbox")
+        metadata[b"geo"] = json.dumps(geo).encode("utf-8")
+        schema = schema.with_metadata(metadata)
+
         writer = pq.ParquetWriter(path, schema)
     return writer
 
@@ -100,7 +115,7 @@ def cli():
 
 @cli.command()
 @click.option("--bbox", required=False, type=BboxParamType())
-@click.option("-f", "output_format", type=click.Choice(["geojson", "geojsonseq", "parquet"]), required=True)
+@click.option("-f", "output_format", type=click.Choice(["geojson", "geojsonseq", "geoparquet"]), required=True)
 @click.option("-o", "--output", required=False, type=click.Path())
 @click.option(
     "-t",
@@ -128,11 +143,15 @@ def copy(reader, writer, limit: int = None):
             batch = reader.read_next_batch()
         except StopIteration:
             break
-        writer.write_batch(batch)
+        if batch.num_rows > 0:
+            writer.write_batch(batch)
 
 
 class BaseGeoJSONWriter:
     """
+    A base feature writer that manages either a file handle
+    or output stream. Subclasses should implement write_feature()
+    and finalize() if needed
     """
     def __init__(self, where):
         self.file_handle = None
