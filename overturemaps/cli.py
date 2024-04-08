@@ -1,12 +1,10 @@
 """
-Extract features from a Parquet dataset in a specified bounding box
+Overture Maps (overturemaps.org) command line utility.
 
-With a parquet dataset that has the per-row bounding boxes, we can quickly
-sub-select within a known region
+Currently provides the ability to extract features from an Overture dataset in a
+specified bounding box in a few different file formats.
 
 """
-
-import itertools
 import json
 import os
 import sys
@@ -21,6 +19,9 @@ import pyarrow.parquet as pq
 import shapely.wkb
 
 
+# Map of sub-partition "type" to parent partition "theme" for forming the
+# complete s3 path. Could be discovered by reading from the top-level s3
+# location but this allows to only read the files in the necessary partition.
 _theme_type_mapping = {
     "locality": "admins",
     "locality_area": "admins",
@@ -47,6 +48,9 @@ def _dataset_path(overture_type: str) -> str:
 
 
 def record_batch_reader(path, bbox=None) -> Optional[pa.RecordBatchReader]:
+    """
+    Return a pyarrow RecordBatchReader for the desired bounding box and s3 path
+    """
     if bbox:
         xmin, ymin, xmax, ymax = bbox
         filter = (
@@ -133,6 +137,9 @@ def copy(reader, writer, limit: int = None):
 
 class BaseGeoJSONWriter:
     """
+    A base feature writer that manages either a file handle
+    or output stream. Subclasses should implement write_feature()
+    and finalize() if needed
     """
     def __init__(self, where):
         self.file_handle = None
