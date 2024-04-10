@@ -2,16 +2,23 @@
 
 Official Python command-line tool of the [Overture Maps Foundation](overturemaps.org)
 
+Overture Maps provides free and open geospatial map data, from many different sources and normalized to a
+[common schema](https://github.com/OvertureMaps/schema). This tool helps to download Overture data
+within a region of interest and converts it to a few different file formats. For more information about accessing
+Overture Maps data, see our official documentation site https://docs.overturemaps.org.
+
 Note: This repository and project are experimental. Things are likely change including the user interface
 until a stable release, but we will keep the documentation here up-to-date.
 
-## Get Started
+## Quick Start
 
 Download the building footprints for the specific bounding box as GeoJSON and save to a file named "boston.geojson"
 
 ```
 $ overturemaps download --bbox=-71.068,42.353,-71.058,42.363 -f geojson --type=building -o boston.geojson
 ```
+
+## Usage
 
 #### `download`
 There is currently one option to the `overturemaps` utility, `download`. It will download Overture Maps data
