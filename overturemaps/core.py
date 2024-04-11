@@ -98,4 +98,4 @@ def _dataset_path(overture_type: str) -> str:
 
 
 def get_all_overture_types() -> List[str]:
-    return list(type_theme_map.values())
+    return list(type_theme_map.keys())
