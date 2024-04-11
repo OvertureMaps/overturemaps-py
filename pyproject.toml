@@ -10,7 +10,7 @@ readme = "README.md"
 python = "^3.11"
 click = "^8.1.7"
 pyarrow = "^15.0.2"
-shapely = "^2.0.3"
+geoarrow-rust-core = "^0.2.0"
 
 [tool.poetry.scripts]
 overturemaps = 'overturemaps.cli:cli'
