@@ -33,7 +33,7 @@ def get_writer(output_format, path, schema):
         # boxes do all the work.
         metadata = schema.metadata
         geo = json.loads(metadata[b"geo"])
-        for column in geo["columns"].values():
+        for column in geo["columns"].keys():
             column.pop("bbox")
         metadata[b"geo"] = json.dumps(geo).encode("utf-8")
         schema = schema.with_metadata(metadata)
