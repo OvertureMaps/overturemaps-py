@@ -18,57 +18,7 @@ import pyarrow.fs as fs
 import pyarrow.parquet as pq
 import shapely.wkb
 
-
-# Map of sub-partition "type" to parent partition "theme" for forming the
-# complete s3 path. Could be discovered by reading from the top-level s3
-# location but this allows to only read the files in the necessary partition.
-_theme_type_mapping = {
-    "locality": "admins",
-    "locality_area": "admins",
-    "administrative_boundary": "admins",
-    "building": "buildings",
-    "part": "buildings",
-    "place": "places",
-    "segment": "transportation",
-    "connector": "transportation",
-    "land": "base",
-    "land_use": "base",
-    "water": "base",
-}
-
-
-def _dataset_path(overture_type: str) -> str:
-    """
-    Returns the s3 path of the Overture dataset to use. This assumes overture_type has
-    been validated, e.g. by the CLI
-
-    """
-    theme = _theme_type_mapping[overture_type]
-    return f"overturemaps-us-west-2/release/2024-03-12-alpha.0/theme={theme}/type={overture_type}/"
-
-
-def record_batch_reader(path, bbox=None) -> Optional[pa.RecordBatchReader]:
-    """
-    Return a pyarrow RecordBatchReader for the desired bounding box and s3 path
-    """
-    if bbox:
-        xmin, ymin, xmax, ymax = bbox
-        filter = (
-            (pc.field("bbox", "minx") < xmax)
-            & (pc.field("bbox", "maxx") > xmin)
-            & (pc.field("bbox", "miny") < ymax)
-            & (pc.field("bbox", "maxy") > ymin)
-        )
-    else:
-        filter = None
-
-    dataset = ds.dataset(
-        path, filesystem=fs.S3FileSystem(anonymous=True, region="us-west-2")
-    )
-    batches = dataset.to_batches(filter=filter)
-
-    reader = pa.RecordBatchReader.from_batches(dataset.schema, batches)
-    return reader
+from . core import record_batch_reader, get_all_overture_types
 
 
 def get_writer(output_format, path, schema):
@@ -103,7 +53,9 @@ class BboxParamType(click.ParamType):
             fail = True
 
         if fail or len(bbox) != 4:
-            self.fail(f"bbox must be 4 floating point numbers separated by commas. Got '{value}'")
+            self.fail(
+                f"bbox must be 4 floating point numbers separated by commas. Got '{value}'"
+            )
 
         return bbox
 
@@ -115,21 +67,25 @@ def cli():
 
 @cli.command()
 @click.option("--bbox", required=False, type=BboxParamType())
-@click.option("-f", "output_format", type=click.Choice(["geojson", "geojsonseq", "geoparquet"]), required=True)
+@click.option(
+    "-f",
+    "output_format",
+    type=click.Choice(["geojson", "geojsonseq", "geoparquet"]),
+    required=True,
+)
 @click.option("-o", "--output", required=False, type=click.Path())
 @click.option(
     "-t",
     "--type",
     "type_",
-    type=click.Choice(list(_theme_type_mapping.keys())),
+    type=click.Choice(get_all_overture_types()),
     required=True,
 )
 def download(bbox, output_format, output, type_):
     if output is None:
         output = sys.stdout
 
-    path = _dataset_path(type_)
-    reader = record_batch_reader(path, bbox)
+    reader = record_batch_reader(type_, bbox)
     if reader is None:
         return
 
@@ -137,7 +93,7 @@ def download(bbox, output_format, output, type_):
         copy(reader, writer)
 
 
-def copy(reader, writer, limit: int = None):
+def copy(reader, writer):
     while True:
         try:
             batch = reader.read_next_batch()
@@ -153,6 +109,7 @@ class BaseGeoJSONWriter:
     or output stream. Subclasses should implement write_feature()
     and finalize() if needed
     """
+
     def __init__(self, where):
         self.file_handle = None
         if isinstance(where, str):
