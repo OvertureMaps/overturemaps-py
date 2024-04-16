@@ -15,10 +15,10 @@ def record_batch_reader(overture_type, bbox=None) -> Optional[pa.RecordBatchRead
     if bbox:
         xmin, ymin, xmax, ymax = bbox
         filter = (
-            (pc.field("bbox", "minx") < xmax)
-            & (pc.field("bbox", "maxx") > xmin)
-            & (pc.field("bbox", "miny") < ymax)
-            & (pc.field("bbox", "maxy") > ymin)
+            (pc.field("bbox", "xmin") < xmax)
+            & (pc.field("bbox", "xmax") > xmin)
+            & (pc.field("bbox", "ymin") < ymax)
+            & (pc.field("bbox", "ymax") > ymin)
         )
     else:
         filter = None
@@ -74,10 +74,11 @@ type_theme_map = {
     "locality_area": "admins",
     "administrative_boundary": "admins",
     "building": "buildings",
-    "part": "buildings",
+    "building_part": "buildings",
     "place": "places",
     "segment": "transportation",
     "connector": "transportation",
+    "infrastructure": "base",
     "land": "base",
     "land_use": "base",
     "water": "base",
@@ -94,7 +95,7 @@ def _dataset_path(overture_type: str) -> str:
     # complete s3 path. Could be discovered by reading from the top-level s3
     # location but this allows to only read the files in the necessary partition.
     theme = type_theme_map[overture_type]
-    return f"overturemaps-us-west-2/release/2024-03-12-alpha.0/theme={theme}/type={overture_type}/"
+    return f"overturemaps-us-west-2/release/2024-04-16-beta.0/theme={theme}/type={overture_type}/"
 
 
 def get_all_overture_types() -> List[str]:
