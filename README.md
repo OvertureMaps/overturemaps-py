@@ -1,6 +1,6 @@
 # overturemaps-py
 
-Official Python command-line tool of the [Overture Maps Foundation](overturemaps.org)
+Official Python command-line tool of the [Overture Maps Foundation](https://overturemaps.org)
 
 Overture Maps provides free and open geospatial map data, from many different sources and normalized to a
 [common schema](https://github.com/OvertureMaps/schema). This tool helps to download Overture data
