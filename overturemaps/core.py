@@ -75,6 +75,8 @@ type_theme_map = {
     "administrative_boundary": "admins",
     "building": "buildings",
     "building_part": "buildings",
+    "division": "divisions",
+    "division_area": "divisions",
     "place": "places",
     "segment": "transportation",
     "connector": "transportation",
