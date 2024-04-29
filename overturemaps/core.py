@@ -6,12 +6,17 @@ import pyarrow.dataset as ds
 import pyarrow.fs as fs
 
 
-def record_batch_reader(overture_type, bbox=None) -> Optional[pa.RecordBatchReader]:
+def record_batch_reader(
+    overture_type,
+    bbox=None,
+    release=None,
+) -> Optional[pa.RecordBatchReader]:
     """
     Return a pyarrow RecordBatchReader for the desired bounding box and s3 path
     """
-    path = _dataset_path(overture_type)
-
+    if release is None:
+        release = "2024-04-16-beta.0"
+    path = _dataset_path(overture_type, release)
     if bbox:
         xmin, ymin, xmax, ymax = bbox
         filter = (
@@ -26,6 +31,7 @@ def record_batch_reader(overture_type, bbox=None) -> Optional[pa.RecordBatchRead
     dataset = ds.dataset(
         path, filesystem=fs.S3FileSystem(anonymous=True, region="us-west-2")
     )
+
     batches = dataset.to_batches(filter=filter)
 
     # to_batches() can yield many batches with no rows. I've seen
@@ -34,6 +40,7 @@ def record_batch_reader(overture_type, bbox=None) -> Optional[pa.RecordBatchRead
     # each one bloating the size of a parquet file. Just omit
     # them so the RecordBatchReader only has non-empty ones. Use
     # the generator syntax so the batches are streamed out
+
     non_empty_batches = (b for b in batches if b.num_rows > 0)
 
     geoarrow_schema = geoarrow_schema_adapter(dataset.schema)
@@ -87,7 +94,10 @@ type_theme_map = {
 }
 
 
-def _dataset_path(overture_type: str) -> str:
+def _dataset_path(
+    overture_type: str,
+    release: str,
+) -> str:
     """
     Returns the s3 path of the Overture dataset to use. This assumes overture_type has
     been validated, e.g. by the CLI
@@ -97,7 +107,9 @@ def _dataset_path(overture_type: str) -> str:
     # complete s3 path. Could be discovered by reading from the top-level s3
     # location but this allows to only read the files in the necessary partition.
     theme = type_theme_map[overture_type]
-    return f"overturemaps-us-west-2/release/2024-04-16-beta.0/theme={theme}/type={overture_type}/"
+    return (
+        f"overturemaps-us-west-2/release/{release}/theme={theme}/type={overture_type}/"
+    )
 
 
 def get_all_overture_types() -> List[str]:

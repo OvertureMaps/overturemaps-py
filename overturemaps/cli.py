@@ -5,6 +5,7 @@ Currently provides the ability to extract features from an Overture dataset in a
 specified bounding box in a few different file formats.
 
 """
+
 import json
 import os
 import sys
@@ -12,13 +13,13 @@ from typing import Optional
 
 import click
 import pyarrow as pa
-import pyarrow.dataset as ds
 import pyarrow.compute as pc
+import pyarrow.dataset as ds
 import pyarrow.fs as fs
 import pyarrow.parquet as pq
 import shapely.wkb
 
-from . core import record_batch_reader, get_all_overture_types
+from .core import get_all_overture_types, record_batch_reader
 
 
 def get_writer(output_format, path, schema):
@@ -74,6 +75,7 @@ def cli():
     required=True,
 )
 @click.option("-o", "--output", required=False, type=click.Path())
+@click.option("-r", "--release", required=False, type=str)
 @click.option(
     "-t",
     "--type",
@@ -81,11 +83,16 @@ def cli():
     type=click.Choice(get_all_overture_types()),
     required=True,
 )
-def download(bbox, output_format, output, type_):
+def download(bbox, output_format, output, type_, release):
     if output is None:
         output = sys.stdout
 
-    reader = record_batch_reader(type_, bbox)
+    reader = record_batch_reader(
+        type_,
+        bbox,
+        release,
+    )
+
     if reader is None:
         return
 
