@@ -75,7 +75,7 @@ def cli():
     required=True,
 )
 @click.option("-o", "--output", required=False, type=click.Path())
-@click.option("-dv", "--dataset_version", required=False, type=click.Path())
+@click.option("-r", "--release", required=False, type=str)
 @click.option(
     "-t",
     "--type",
@@ -83,14 +83,14 @@ def cli():
     type=click.Choice(get_all_overture_types()),
     required=True,
 )
-def download(bbox, output_format, output, type_, dataset_version):
+def download(bbox, output_format, output, type_, release):
     if output is None:
         output = sys.stdout
 
     reader = record_batch_reader(
         type_,
         bbox,
-        **({"dataset_version": dataset_version} if dataset_version is not None else {}),
+        **({"release": release} if release is not None else {}),
     )
 
     if reader is None:
@@ -154,30 +154,17 @@ class BaseGeoJSONWriter:
     def finalize(self):
         pass
 
-    def flatten_properties(self, data, target, parent_key="", top_level=False):
-        for k, v in data.items():
-            if top_level and (k == "bbox" or v is None):
-                continue  # Skip "bbox" keys and None values in top-level
-            elif isinstance(v, dict):
-                new_parent_key = f"{parent_key}.{k}" if parent_key else k
-                self.flatten_properties(v, target, new_parent_key, top_level=False)
-            else:
-                key = f"{parent_key}.{k}" if parent_key else k
-                target[key] = v
-
     def row_to_feature(self, row):
         geometry = shapely.wkb.loads(row.pop("geometry"))
         row.pop("bbox")
-        flattened_properties = {}
-        ## this flattens the properties to make geojson readable
+
         # This only removes null values in the top-level dictionary but will leave in
         # nulls in sub-properties
-        self.flatten_properties(row, flattened_properties, top_level=True)
-
+        properties = {k: v for k, v in row.items() if k != "bbox" and v is not None}
         return {
             "type": "Feature",
             "geometry": geometry.__geo_interface__,
-            "properties": flattened_properties,
+            "properties": properties,
         }
 
 
