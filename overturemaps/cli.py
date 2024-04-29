@@ -90,7 +90,7 @@ def download(bbox, output_format, output, type_, release):
     reader = record_batch_reader(
         type_,
         bbox,
-        **({"release": release} if release is not None else {}),
+        release,
     )
 
     if reader is None:

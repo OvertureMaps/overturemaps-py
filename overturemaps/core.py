@@ -9,11 +9,13 @@ import pyarrow.fs as fs
 def record_batch_reader(
     overture_type,
     bbox=None,
-    release="2024-04-16-beta.0",
+    release=None,
 ) -> Optional[pa.RecordBatchReader]:
     """
     Return a pyarrow RecordBatchReader for the desired bounding box and s3 path
     """
+    if release is None:
+        release = "2024-04-16-beta.0"
     path = _dataset_path(overture_type, release)
     if bbox:
         xmin, ymin, xmax, ymax = bbox
