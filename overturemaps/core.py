@@ -4,19 +4,18 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 import pyarrow.fs as fs
+from tqdm import tqdm
 
 
 def record_batch_reader(
-    overture_type,
-    bbox=None,
-    release=None,
+    overture_type=False, bbox=None, release=None, custom_type=None, custom_theme=None
 ) -> Optional[pa.RecordBatchReader]:
     """
     Return a pyarrow RecordBatchReader for the desired bounding box and s3 path
     """
     if release is None:
         release = "2024-04-16-beta.0"
-    path = _dataset_path(overture_type, release)
+    path = _dataset_path(overture_type, release, custom_type, custom_theme)
     if bbox:
         xmin, ymin, xmax, ymax = bbox
         filter = (
@@ -41,8 +40,14 @@ def record_batch_reader(
     # them so the RecordBatchReader only has non-empty ones. Use
     # the generator syntax so the batches are streamed out
 
-    non_empty_batches = (b for b in batches if b.num_rows > 0)
-
+    non_empty_batches = (
+        b
+        for b in tqdm(
+            batches,
+            desc=f"Processing batches for {overture_type}",
+        )
+        if b.num_rows > 0
+    )
     geoarrow_schema = geoarrow_schema_adapter(dataset.schema)
     reader = pa.RecordBatchReader.from_batches(geoarrow_schema, non_empty_batches)
     return reader
@@ -94,10 +99,7 @@ type_theme_map = {
 }
 
 
-def _dataset_path(
-    overture_type: str,
-    release: str,
-) -> str:
+def _dataset_path(overture_type, release, custom_type, custom_theme) -> str:
     """
     Returns the s3 path of the Overture dataset to use. This assumes overture_type has
     been validated, e.g. by the CLI
@@ -106,10 +108,11 @@ def _dataset_path(
     # Map of sub-partition "type" to parent partition "theme" for forming the
     # complete s3 path. Could be discovered by reading from the top-level s3
     # location but this allows to only read the files in the necessary partition.
-    theme = type_theme_map[overture_type]
-    return (
-        f"overturemaps-us-west-2/release/{release}/theme={theme}/type={overture_type}/"
-    )
+    theme = type_theme_map.get(overture_type, custom_theme)
+    overture_type = overture_type or custom_type
+    type_path = f"type={overture_type}/" if overture_type else ""
+
+    return f"overturemaps-us-west-2/release/{release}/theme={theme}/{type_path}"
 
 
 def get_all_overture_types() -> List[str]:

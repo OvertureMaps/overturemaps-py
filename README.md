@@ -31,9 +31,19 @@ Command-line options:
 entire dataset for the specified type will be downloaded
 * `-f` (required: one of "geojson", "geojsonseq", "geoparquet"): output format
 * `--output`/`-o` (optional): Location of output file. When omitted output will be written to stdout.
-* `--type`/`-t` (required): The Overture map data type to be downloaded. Examples of types are `building`
+* `--type`/`-t` (optional): The Overture map data type to be downloaded. Examples of types are `building`
 for building footprints, `place` for POI places data, etc. Run `overturemaps download --help` for the
 complete list of allowed types
+
+**Overrides** 
+By default if -type is supplied it will match related themes and provides the file path. You can override this behaviour to download your own combination you can do that using following two cli arguments
+* `--custom-type`/`-cty` (optional): If you want to override the defaults provided and download them on your own you can pass your type here that would be supplied to url later on
+* `--custom-theme`/`-cth` (optional): If you want to override the defaults provided and download them on your own you can pass your theme here 
+
+For eg : To download all places in boston inside places theme without restricting it to type
+```bash
+overturemaps download --bbox=-71.068,42.353,-71.058,42.363 -f geojson -o boston_places.geojson -cth places
+```
 
 This downloads data directly from Overture's S3 bucket without interacting with any other servers. 
 By including bounding box extents on each row in the Overture distribution, the underlying Parquet

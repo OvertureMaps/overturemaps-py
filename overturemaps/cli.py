@@ -81,17 +81,36 @@ def cli():
     "--type",
     "type_",
     type=click.Choice(get_all_overture_types()),
-    required=True,
+    required=False,
 )
-def download(bbox, output_format, output, type_, release):
+@click.option(
+    "-cty",
+    "--custom-type",
+    type=str,
+    required=False,
+)
+@click.option(
+    "-cth",
+    "--custom-theme",
+    type=str,
+    required=False,
+)
+def download(bbox, output_format, output, type_, release, custom_type, custom_theme):
     if output is None:
         output = sys.stdout
 
-    reader = record_batch_reader(
-        type_,
-        bbox,
-        release,
-    )
+    if not (type_ or custom_theme):
+        click.echo("Error : Either --type or --custom-theme must be provided.")
+        return
+    if type_ and (custom_type or custom_theme):
+        click.echo(
+            "Error : Cannot provide --type along with --custom-type or --custom-theme."
+        )
+        return
+    if custom_type and not custom_theme:
+        click.echo("Error : Theme is required to acoomodate along with type")
+        return
+    reader = record_batch_reader(type_, bbox, release, custom_type, custom_theme)
 
     if reader is None:
         return

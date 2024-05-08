@@ -11,6 +11,7 @@ python = "^3.8"
 click = "^8.1.7"
 pyarrow = "^15.0.2"
 shapely = "^2.0.3"
+tqdm = "^4.66.4"
 
 [tool.poetry.scripts]
 overturemaps = 'overturemaps.cli:cli'
