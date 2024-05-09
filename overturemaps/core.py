@@ -44,7 +44,7 @@ def record_batch_reader(
         b
         for b in tqdm(
             batches,
-            desc=f"Processing batches for {overture_type}",
+            desc=f"Processing batches",
         )
         if b.num_rows > 0
     )
