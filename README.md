@@ -53,7 +53,7 @@ To install overturemaps from [PyPi](https://pypi.org/project/overturemaps/) usin
 pip install overturemaps
 ```
 
-overturemaps is also on [conda-forge](https://anaconda.org/conda-forge/overturemaps) and can be installed using conda, mamba, or pixi. To install Lonboard using conda:
+overturemaps is also on [conda-forge](https://anaconda.org/conda-forge/overturemaps) and can be installed using conda, mamba, or pixi. To install overturemaps using conda:
 
 ```shell
 conda install -c conda-forge overturemaps
