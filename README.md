@@ -1,3 +1,5 @@
+[![PyPi](https://img.shields.io/pypi/v/overturemaps.svg)](https://pypi.python.org/pypi/overturemaps)
+
 # overturemaps-py
 
 Official Python command-line tool of the [Overture Maps Foundation](https://overturemaps.org)
