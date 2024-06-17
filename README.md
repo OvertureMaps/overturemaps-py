@@ -49,4 +49,14 @@ the `--bbox` field here.
 
 ## Installation
 
-`pip install overturemaps`
+To install overturemaps from [PyPi](https://pypi.org/project/overturemaps/) using pip
+
+```shell
+pip install overturemaps
+```
+
+overturemaps is also on [conda-forge](https://anaconda.org/conda-forge/overturemaps) and can be installed using conda, mamba, or pixi. To install overturemaps using conda:
+
+```shell
+conda install -c conda-forge overturemaps
+```
