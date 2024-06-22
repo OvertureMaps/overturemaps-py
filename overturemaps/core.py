@@ -98,7 +98,7 @@ def _dataset_path(overture_type: str) -> str:
     # complete s3 path. Could be discovered by reading from the top-level s3
     # location but this allows to only read the files in the necessary partition.
     theme = type_theme_map[overture_type]
-    return f"overturemaps-us-west-2/release/2024-06-13-beta.0/theme={theme}/type={overture_type}/"
+    return f"overturemaps-us-west-2/release/2024-06-13-beta.1/theme={theme}/type={overture_type}/"
 
 
 def get_all_overture_types() -> List[str]:
