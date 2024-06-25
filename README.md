@@ -19,6 +19,18 @@ Download the building footprints for the specific bounding box as GeoJSON and sa
 ```
 $ overturemaps download --bbox=-71.068,42.353,-71.058,42.363 -f geojson --type=building -o boston.geojson
 ```
+In Python: 
+
+Use the building footprints within the bounding box as a DataFrame:
+
+```
+import overturemaps
+
+bbox = -71.068, 42.353, -71.058, 42.363
+
+df_table = overturemaps.record_batch_reader("building", bbox).read_all()
+
+```
 
 ## Usage
 
