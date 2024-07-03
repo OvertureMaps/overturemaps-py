@@ -4,7 +4,15 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 import pyarrow.fs as fs
+from typing import TYPE_CHECKING
 
+# Allows for optional import of additional dependencies
+try: 
+    import geopandas as gpd
+    from geopandas import GeoDataFrame
+except ImportError: 
+    gpd = None
+    GeoDataFrame = None
 
 def record_batch_reader(overture_type, bbox=None) -> Optional[pa.RecordBatchReader]:
     """
@@ -40,6 +48,24 @@ def record_batch_reader(overture_type, bbox=None) -> Optional[pa.RecordBatchRead
     reader = pa.RecordBatchReader.from_batches(geoarrow_schema, non_empty_batches)
     return reader
 
+def geodataframe(overture_type: str, bbox: (float, float, float, float) = None) -> GeoDataFrame:
+    """
+    Loads geoparquet for specified type into a geopandas dataframe
+
+    Parameters
+    ----------
+    overture_type: type to load
+    bbox: optional bounding box for data fetch (xmin, ymin, xmax, ymax)
+
+    Returns
+    -------
+    GeoDataFrame with the optionally filtered theme data
+
+    """
+    if not gpd:
+        raise ImportError("geopandas is required to use this function")
+
+    return gpd.read_parquet(f"s3://{_dataset_path(overture_type)}", bbox=bbox)
 
 def geoarrow_schema_adapter(schema: pa.Schema) -> pa.Schema:
     """
@@ -67,7 +93,6 @@ def geoarrow_schema_adapter(schema: pa.Schema) -> pa.Schema:
     geoarrow_schema = schema.set(geometry_field_index, geoarrow_geometry_field)
 
     return geoarrow_schema
-
 
 type_theme_map = {
     "locality": "admins",
