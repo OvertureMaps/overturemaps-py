@@ -16,9 +16,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install Poetry
         run: pip3 install poetry
-      - name: Build library
-        run: poetry build
-      - name: Install wheel
-        run: find dist/ -type f -name '*.whl' -exec pip3 install {} ';'
+      - name: Install library
+        run: poetry install
       - name: Test run
         run: overturemaps download --bbox=-71.068,42.353,-71.058,42.363 -f geojson --type=building -o boston.geojson
