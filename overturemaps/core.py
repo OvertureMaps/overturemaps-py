@@ -97,9 +97,6 @@ def geoarrow_schema_adapter(schema: pa.Schema) -> pa.Schema:
 
 
 type_theme_map = {
-    # "locality": "admins",
-    # "locality_area": "admins",
-    # "administrative_boundary": "admins",
     "address": "addresses",
     "building": "buildings",
     "building_part": "buildings",
