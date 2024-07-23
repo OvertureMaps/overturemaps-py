@@ -17,7 +17,9 @@ jobs:
       - name: Install Poetry
         run: pip3 install poetry
       - name: Manually install numpy
-        run: poetry run pip install setuptools numpy==1.24.4
+        run: |
+          poetry run pip install setuptools
+          poetry run pip install numpy==1.24.4
       - name: Build library and install deps
         run: poetry install
       - name: Test run
