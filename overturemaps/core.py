@@ -9,8 +9,9 @@ import pyarrow.fs as fs
 try: 
     import geopandas as gpd
     from geopandas import GeoDataFrame
-except ImportError: 
-    gpd = None
+    HAS_GEOPANDAS = True
+except ImportError:
+    HAS_GEOPANDAS = False
     GeoDataFrame = None
 
 def record_batch_reader(overture_type, bbox=None) -> Optional[pa.RecordBatchReader]:
@@ -61,7 +62,7 @@ def geodataframe(overture_type: str, bbox: (float, float, float, float) = None) 
     GeoDataFrame with the optionally filtered theme data
 
     """
-    if not gpd:
+    if not HAS_GEOPANDAS:
         raise ImportError("geopandas is required to use this function")
 
     reader = record_batch_reader(overture_type, bbox)
