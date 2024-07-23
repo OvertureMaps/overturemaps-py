@@ -4,7 +4,6 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 import pyarrow.fs as fs
-from typing import TYPE_CHECKING
 
 # Allows for optional import of additional dependencies
 try: 
@@ -94,6 +93,7 @@ def geoarrow_schema_adapter(schema: pa.Schema) -> pa.Schema:
     geoarrow_schema = schema.set(geometry_field_index, geoarrow_geometry_field)
 
     return geoarrow_schema
+
 
 type_theme_map = {
     "locality": "admins",
