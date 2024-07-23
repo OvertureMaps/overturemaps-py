@@ -65,7 +65,8 @@ def geodataframe(overture_type: str, bbox: (float, float, float, float) = None) 
     if not gpd:
         raise ImportError("geopandas is required to use this function")
 
-    return gpd.read_parquet(f"s3://{_dataset_path(overture_type)}", bbox=bbox)
+    reader = record_batch_reader(overture_type, bbox)
+    return gpd.GeoDataFrame.from_arrow(reader)
 
 def geoarrow_schema_adapter(schema: pa.Schema) -> pa.Schema:
     """
