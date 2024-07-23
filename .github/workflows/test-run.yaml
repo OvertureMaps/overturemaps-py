@@ -18,5 +18,7 @@ jobs:
         run: pip3 install poetry
       - name: Build library and install deps
         run: poetry install
+      - name: Manually install numpy
+        run: poetry run pip install numpy
       - name: Test run
         run: poetry run overturemaps download --bbox=-71.068,42.353,-71.058,42.363 -f geojson --type=building -o boston.geojson
