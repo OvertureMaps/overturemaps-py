@@ -8,9 +8,9 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.8"
-click = "^8.1.7"
-pyarrow = "^15.0.2"
-shapely = "^2.0.3"
+click = ">=8.1.7"
+pyarrow = ">=15.0.2"
+shapely = ">=2.0.3"
 
 [tool.poetry.scripts]
 overturemaps = 'overturemaps.cli:cli'
