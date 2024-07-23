@@ -5,6 +5,14 @@ import pyarrow.compute as pc
 import pyarrow.dataset as ds
 import pyarrow.fs as fs
 
+# Allows for optional import of additional dependencies
+try: 
+    import geopandas as gpd
+    from geopandas import GeoDataFrame
+    HAS_GEOPANDAS = True
+except ImportError:
+    HAS_GEOPANDAS = False
+    GeoDataFrame = None
 
 def record_batch_reader(overture_type, bbox=None) -> Optional[pa.RecordBatchReader]:
     """
@@ -40,6 +48,25 @@ def record_batch_reader(overture_type, bbox=None) -> Optional[pa.RecordBatchRead
     reader = pa.RecordBatchReader.from_batches(geoarrow_schema, non_empty_batches)
     return reader
 
+def geodataframe(overture_type: str, bbox: (float, float, float, float) = None) -> GeoDataFrame:
+    """
+    Loads geoparquet for specified type into a geopandas dataframe
+
+    Parameters
+    ----------
+    overture_type: type to load
+    bbox: optional bounding box for data fetch (xmin, ymin, xmax, ymax)
+
+    Returns
+    -------
+    GeoDataFrame with the optionally filtered theme data
+
+    """
+    if not HAS_GEOPANDAS:
+        raise ImportError("geopandas is required to use this function")
+
+    reader = record_batch_reader(overture_type, bbox)
+    return gpd.GeoDataFrame.from_arrow(reader)
 
 def geoarrow_schema_adapter(schema: pa.Schema) -> pa.Schema:
     """
