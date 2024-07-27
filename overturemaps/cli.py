@@ -30,17 +30,23 @@ def get_writer(output_format, path, schema):
         # don't remove per row bbox and add covering spec for spatial filters
         metadata = schema.metadata
         geo = json.loads(metadata[b"geo"])
-        geo["columns"]["geometry"]["covering"] = {
-            "bbox": {
-                "xmin": ["bbox", "xmin"],
-                "ymin": ["bbox", "ymin"],
-                "xmax": ["bbox", "xmax"],
-                "ymax": ["bbox", "ymax"],
-            }
-        }
+        # iter geometry columns and associated metadata, see:
+        # https://github.com/opengeospatial/geoparquet/blob/main/format-specs/geoparquet.md#column-metadata
+        for geom_col_name, geom_col_vals in geo["columns"].items():
+            # if the associated geom column has bbox info...
+            if "bbox" in geom_col_vals:
+                # then make sure it is accommpanied by "covering"
+                # this facilitates spatial filters e.g. geopandas read_parquet
+                geo["columns"][geom_col_name]["covering"] = {
+                    "bbox": {
+                        "xmin": ["bbox", "xmin"],
+                        "ymin": ["bbox", "ymin"],
+                        "xmax": ["bbox", "xmax"],
+                        "ymax": ["bbox", "ymax"],
+                    }
+                }
         metadata[b"geo"] = json.dumps(geo).encode("utf-8")
         schema = schema.with_metadata(metadata)
-
         writer = pq.ParquetWriter(path, schema)
     return writer
 
