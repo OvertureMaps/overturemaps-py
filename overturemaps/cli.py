@@ -27,14 +27,17 @@ def get_writer(output_format, path, schema):
     elif output_format == "geojsonseq":
         writer = GeoJSONSeqWriter(path)
     elif output_format == "geoparquet":
-        # Update the geoparquet metadata to remove the file-level bbox which
-        # will no longer apply to this file. Since we cannot write the field at
-        # the end, just remove it as it's optional. Let the per-row bounding
-        # boxes do all the work.
+        # don't remove per row bbox and add covering spec for spatial filters
         metadata = schema.metadata
         geo = json.loads(metadata[b"geo"])
-        for column in geo["columns"].values():
-            column.pop("bbox")
+        geo["columns"]["geometry"]["covering"] = {
+            "bbox": {
+                "xmin": ["bbox", "xmin"],
+                "ymin": ["bbox", "ymin"],
+                "xmax": ["bbox", "xmax"],
+                "ymax": ["bbox", "ymax"],
+            }
+        }
         metadata[b"geo"] = json.dumps(geo).encode("utf-8")
         schema = schema.with_metadata(metadata)
 
