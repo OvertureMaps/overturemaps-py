@@ -27,25 +27,26 @@ def get_writer(output_format, path, schema):
     elif output_format == "geojsonseq":
         writer = GeoJSONSeqWriter(path)
     elif output_format == "geoparquet":
-        # remove geom extents bbox and add covering spec for spatial filters
+        # Update the geoparquet metadata to remove the file-level bbox which
+        # will no longer apply to this file. Since we cannot write the field at
+        # the end, just remove it as it's optional. Let the per-row bounding
+        # boxes do all the work.
         metadata = schema.metadata
-        # extract row metadata
-        row_meta = json.loads(metadata[b"org.apache.spark.sql.parquet.row.metadata"])
-        # look for bbox field
-        bbox_field = [r for r in row_meta["fields"] if r["name"] == "bbox"]
         # extract geo metadata
         geo = json.loads(metadata[b"geo"])
-        # iter geometry columns and associated metadata
-        # there can be multiple geom columns
-        for geom_col_name, geom_col_vals in geo["columns"].items():
+        # the spec allows for multiple geom columns
+        geo_columns = geo["columns"]
+        if len(geo_columns) > 1:
+            raise IOError("Expected single geom column but encountered multiple.")
+        for geom_col_vals in geo_columns.values():
             # geom level extents "bbox" is optional - remove if present
             # since extracted data will have different extents
             if "bbox" in geom_col_vals:
-                geo["columns"][geom_col_name].pop("bbox")
+                geom_col_vals.pop("bbox")
             # add "covering" if there is a row level "bbox" column
             # this facilitates spatial filters e.g. geopandas read_parquet
-            if bbox_field:
-                geo["columns"][geom_col_name]["covering"] = {
+            if "bbox" in schema.names:
+                geom_col_vals["covering"] = {
                     "bbox": {
                         "xmin": ["bbox", "xmin"],
                         "ymin": ["bbox", "ymin"],
