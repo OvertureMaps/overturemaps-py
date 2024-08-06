@@ -32,12 +32,30 @@ def get_writer(output_format, path, schema):
         # the end, just remove it as it's optional. Let the per-row bounding
         # boxes do all the work.
         metadata = schema.metadata
+        # extract geo metadata
         geo = json.loads(metadata[b"geo"])
-        for column in geo["columns"].values():
-            column.pop("bbox")
+        # the spec allows for multiple geom columns
+        geo_columns = geo["columns"]
+        if len(geo_columns) > 1:
+            raise IOError("Expected single geom column but encountered multiple.")
+        for geom_col_vals in geo_columns.values():
+            # geom level extents "bbox" is optional - remove if present
+            # since extracted data will have different extents
+            if "bbox" in geom_col_vals:
+                geom_col_vals.pop("bbox")
+            # add "covering" if there is a row level "bbox" column
+            # this facilitates spatial filters e.g. geopandas read_parquet
+            if "bbox" in schema.names:
+                geom_col_vals["covering"] = {
+                    "bbox": {
+                        "xmin": ["bbox", "xmin"],
+                        "ymin": ["bbox", "ymin"],
+                        "xmax": ["bbox", "xmax"],
+                        "ymax": ["bbox", "ymax"],
+                    }
+                }
         metadata[b"geo"] = json.dumps(geo).encode("utf-8")
         schema = schema.with_metadata(metadata)
-
         writer = pq.ParquetWriter(path, schema)
     return writer
 
