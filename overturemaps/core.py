@@ -1,18 +1,23 @@
 from typing import List, Optional
 
+import boto3
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 import pyarrow.fs as fs
+from botocore import UNSIGNED
+from botocore.config import Config
 
 # Allows for optional import of additional dependencies
-try: 
+try:
     import geopandas as gpd
     from geopandas import GeoDataFrame
+
     HAS_GEOPANDAS = True
 except ImportError:
     HAS_GEOPANDAS = False
     GeoDataFrame = None
+
 
 def record_batch_reader(overture_type, bbox=None) -> Optional[pa.RecordBatchReader]:
     """
@@ -48,7 +53,10 @@ def record_batch_reader(overture_type, bbox=None) -> Optional[pa.RecordBatchRead
     reader = pa.RecordBatchReader.from_batches(geoarrow_schema, non_empty_batches)
     return reader
 
-def geodataframe(overture_type: str, bbox: (float, float, float, float) = None) -> GeoDataFrame:
+
+def geodataframe(
+    overture_type: str, bbox: (float, float, float, float) = None
+) -> GeoDataFrame:
     """
     Loads geoparquet for specified type into a geopandas dataframe
 
@@ -67,6 +75,7 @@ def geodataframe(overture_type: str, bbox: (float, float, float, float) = None) 
 
     reader = record_batch_reader(overture_type, bbox)
     return gpd.GeoDataFrame.from_arrow(reader)
+
 
 def geoarrow_schema_adapter(schema: pa.Schema) -> pa.Schema:
     """
@@ -129,3 +138,32 @@ def _dataset_path(overture_type: str) -> str:
 
 def get_all_overture_types() -> List[str]:
     return list(type_theme_map.keys())
+
+
+def get_releases() -> dict:
+    """
+    Retrieves all available releases from the S3 bucket and identifies the latest release.
+
+    Returns
+    -------
+    dict:
+        A dictionary containing the 'latest' release and a list of all 'releases'.
+    """
+    s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
+    contents = s3.list_objects_v2(
+        Bucket="overturemaps-us-west-2", Delimiter="/", Prefix="release/"
+    )
+
+    output = {}
+    for idx, release in enumerate(
+        sorted(
+            contents.get("CommonPrefixes"), key=lambda x: x.get("Prefix"), reverse=True
+        )
+    ):
+        path = release.get("Prefix").split("/")[1]
+        if idx == 0:
+            output["latest"] = path
+            output["releases"] = []
+        output["releases"].append(path)
+
+    return output

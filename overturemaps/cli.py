@@ -5,6 +5,7 @@ Currently provides the ability to extract features from an Overture dataset in a
 specified bounding box in a few different file formats.
 
 """
+
 import json
 import os
 import sys
@@ -12,13 +13,13 @@ from typing import Optional
 
 import click
 import pyarrow as pa
-import pyarrow.dataset as ds
 import pyarrow.compute as pc
+import pyarrow.dataset as ds
 import pyarrow.fs as fs
 import pyarrow.parquet as pq
 import shapely.wkb
 
-from . core import record_batch_reader, get_all_overture_types
+from .core import get_all_overture_types, get_releases, record_batch_reader
 
 
 def get_writer(output_format, path, schema):
@@ -81,6 +82,26 @@ class BboxParamType(click.ParamType):
 @click.group()
 def cli():
     pass
+
+
+@cli.group()
+def releases():
+    """
+    Manage Overture Maps dataset releases.
+    """
+    pass
+
+
+@releases.command("list")
+def list_releases():
+    """
+    List all available releases with the latest release highlighted.
+    """
+    releases = get_releases()
+    click.echo("Available Releases:")
+    for release in releases["releases"]:
+        prefix = "LATEST -> " if release == releases["latest"] else "          "
+        click.echo(f"{prefix}{release}")
 
 
 @cli.command()
