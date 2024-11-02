@@ -22,6 +22,12 @@ $ overturemaps download --bbox=-71.068,42.353,-71.058,42.363 -f geojson --type=b
 
 ## Usage
 
+#### `releases list`
+
+The `releases list` command lists all available releases of the Overture Maps dataset, with the latest release clearly marked. This allows users to see which versions of the dataset are available.
+
+---
+
 #### `download`
 There is currently one option to the `overturemaps` utility, `download`. It will download Overture Maps data
 with an optional bounding box into the specified file format. When specifying a bounding box,
