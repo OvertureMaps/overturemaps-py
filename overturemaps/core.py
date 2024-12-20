@@ -98,6 +98,7 @@ def geoarrow_schema_adapter(schema: pa.Schema) -> pa.Schema:
 
 type_theme_map = {
     "address": "addresses",
+    "bathymetry": "base",
     "building": "buildings",
     "building_part": "buildings",
     "division": "divisions",
@@ -124,7 +125,7 @@ def _dataset_path(overture_type: str) -> str:
     # complete s3 path. Could be discovered by reading from the top-level s3
     # location but this allows to only read the files in the necessary partition.
     theme = type_theme_map[overture_type]
-    return f"overturemaps-us-west-2/release/2024-11-13.0/theme={theme}/type={overture_type}/"
+    return f"overturemaps-us-west-2/release/2024-12-18.0/theme={theme}/type={overture_type}/"
 
 
 def get_all_overture_types() -> List[str]:
