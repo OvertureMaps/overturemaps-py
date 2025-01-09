@@ -15,8 +15,9 @@ except ImportError:
     GeoDataFrame = None
 
 BoundingBox: TypeAlias = Tuple[float, float, float, float]
+default_release = "2024-12-18.0"
 
-def record_batch_reader(overture_type: str, bbox: BoundingBox | None = None, release: str = "2024-12-18.0") -> Optional[pa.RecordBatchReader]:
+def record_batch_reader(overture_type: str, bbox: BoundingBox | None = None, release: str = default_release) -> Optional[pa.RecordBatchReader]:
     """
     Return a pyarrow RecordBatchReader for the desired bounding box and s3 path
     """
@@ -50,7 +51,7 @@ def record_batch_reader(overture_type: str, bbox: BoundingBox | None = None, rel
     reader = pa.RecordBatchReader.from_batches(geoarrow_schema, non_empty_batches)
     return reader
 
-def geodataframe(overture_type: str, bbox: BoundingBox | None = None, release: str = "2024-12-18.0") -> GeoDataFrame:
+def geodataframe(overture_type: str, bbox: BoundingBox | None = None, release: str = default_release) -> GeoDataFrame:
     """
     Loads geoparquet for specified type into a geopandas dataframe
 
@@ -118,7 +119,7 @@ type_theme_map = {
 }
 
 
-def _dataset_path(overture_type: str, release: str="2024-12-18.0") -> str:
+def _dataset_path(overture_type: str, release: str=default_release) -> str:
     """
     Returns the s3 path of the Overture dataset to use. This assumes overture_type has
     been validated, e.g. by the CLI
