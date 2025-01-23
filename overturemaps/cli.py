@@ -99,11 +99,13 @@ def cli():
     type=click.Choice(get_all_overture_types()),
     required=True,
 )
-def download(bbox, output_format, output, type_):
+@click.option("--connect_timeout", required=False, type=int)
+@click.option("--request_timeout", required=False, type=int)
+def download(bbox, output_format, output, type_, connect_timeout, request_timeout):
     if output is None:
         output = sys.stdout
 
-    reader = record_batch_reader(type_, bbox)
+    reader = record_batch_reader(type_, bbox, connect_timeout, request_timeout)
     if reader is None:
         return
 
