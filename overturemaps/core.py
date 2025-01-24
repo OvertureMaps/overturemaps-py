@@ -72,6 +72,8 @@ def geodataframe(
     ----------
     overture_type: type to load
     bbox: optional bounding box for data fetch (xmin, ymin, xmax, ymax)
+    connect_timeout: optional connection timeout in seconds
+    request_timeout: optional request timeout in seconds
 
     Returns
     -------
