@@ -118,7 +118,7 @@ def download(bbox, output_format, output, type_, collect_licenses):
         copy(reader, writer, sources)
     
     if collect_licenses:
-        with open("LICENSES_COLLECTED_FROM_QUERY.json", "w") as f:
+        with open("LICENSES_FOR_QUERIED_DATA.json", "w") as f:
             f.write(sources.get_license_info())
 
 
@@ -136,7 +136,7 @@ def copy(reader, writer, sources):
 
 class SourceCollector:
     """
-    extracts sources from Arrow batches and prints their licenses as JSON.
+    Extracts sources form Arrow batches & associates with their relevant licenses
     """
 
     def __init__(self, sources_path, type_):
@@ -154,12 +154,19 @@ class SourceCollector:
         self.collected_source_names |= set([x["dataset"] for x in flattened_sources])
     
     def get_license_info(self):
-        json_theme = self.source_data[self.theme][self.theme]
-        source_data_dict = {} # holds all of the data for 
+        try:
+            json_theme = self.source_data[self.theme][self.theme]
+        except:
+            print(f"Malformed sources data for theme '{self.theme}', aborting license collection.")
+            return f"Malformed sources data for theme '{self.theme}'"
+        
+         # build a dataset name -> license info JSON map
+        source_data_dict = {}
         for source in json_theme:
             source_data_dict[source["source_dataset_name"]] = source
         
         licenses = {}
+        # iterate the sources in our queried data
         for source_name in self.collected_source_names:
             if source_name in source_data_dict:
                 licenses[source_name] = source_data_dict[source_name]
