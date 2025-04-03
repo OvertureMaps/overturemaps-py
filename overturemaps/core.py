@@ -5,6 +5,9 @@ import pyarrow.compute as pc
 import pyarrow.dataset as ds
 import pyarrow.fs as fs
 
+import os
+import json
+
 # Allows for optional import of additional dependencies
 try: 
     import geopandas as gpd
@@ -13,6 +16,35 @@ try:
 except ImportError:
     HAS_GEOPANDAS = False
     GeoDataFrame = None
+
+
+def _read_json(path: str):
+    """
+    Safer wrapper for json.load()
+    """
+    try:
+        with open(path, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print(f"Error: File not found: {path}")
+        return None
+    except json.JSONDecodeError:
+        print(f"Error: Invalid JSON format in file: {path}")
+        return None
+
+def load_sources_from_path(folder_path: str) -> dict:
+    """
+    Loads a folder of JSON files and returns a dictionary of (filename-sans-extension, JSON contents) pairs
+    """
+    sources = {}
+    if not os.path.exists(folder_path):
+        return None
+    files = os.listdir(folder_path)
+    for filename in files:
+        file_path = os.path.join(folder_path, filename)
+        sources[os.path.splitext(filename)[0]] = _read_json(file_path)
+    return sources
+
 
 def record_batch_reader(overture_type, bbox=None) -> Optional[pa.RecordBatchReader]:
     """

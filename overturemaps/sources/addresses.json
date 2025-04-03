@@ -1,5 +1,5 @@
 {
-    "datasets": [
+    "addresses": [
         {
             "source_name": "Geoscape Australia",
             "source_dataset_name": "OpenAddresses/Geoscape Australia",

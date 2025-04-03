@@ -17,8 +17,10 @@ import pyarrow.compute as pc
 import pyarrow.fs as fs
 import pyarrow.parquet as pq
 import shapely.wkb
+import itertools
 
 from . core import record_batch_reader, get_all_overture_types
+from . core import load_sources_from_path, type_theme_map
 
 
 def get_writer(output_format, path, schema):
@@ -99,27 +101,73 @@ def cli():
     type=click.Choice(get_all_overture_types()),
     required=True,
 )
-def download(bbox, output_format, output, type_):
+@click.option("-l", "--collect_licenses", is_flag=True)
+def download(bbox, output_format, output, type_, collect_licenses):
     if output is None:
         output = sys.stdout
 
     reader = record_batch_reader(type_, bbox)
     if reader is None:
         return
+    
+    sources = None
+    if collect_licenses:
+        sources = SourceCollector("./overturemaps/sources", type_)
 
     with get_writer(output_format, output, schema=reader.schema) as writer:
-        copy(reader, writer)
+        copy(reader, writer, sources)
+    
+    if collect_licenses:
+        with open("LICENSES_COLLECTED_FROM_QUERY.json", "w") as f:
+            f.write(sources.get_license_info())
 
 
-def copy(reader, writer):
+def copy(reader, writer, sources):
     while True:
         try:
             batch = reader.read_next_batch()
         except StopIteration:
             break
         if batch.num_rows > 0:
+            if sources is not None:
+                sources.collect_from_batch(batch)
             writer.write_batch(batch)
 
+
+class SourceCollector:
+    """
+    extracts sources from Arrow batches and prints their licenses as JSON.
+    """
+
+    def __init__(self, sources_path, type_):
+        self.theme = type_theme_map[type_]
+        self.source_data = load_sources_from_path(sources_path)
+        self.collected_source_names = set()
+
+    def collect_from_batch(self, batch):
+        # Dump the "sources" column into a list and flatten everything
+        # Maybe there's some way to do this with Arrow?
+        sources = batch.column("sources").to_pylist()
+        flattened_sources = itertools.chain.from_iterable(sources)
+
+        # This seems to work across all themes
+        self.collected_source_names |= set([x["dataset"] for x in flattened_sources])
+    
+    def get_license_info(self):
+        json_theme = self.source_data[self.theme][self.theme]
+        source_data_dict = {} # holds all of the data for 
+        for source in json_theme:
+            source_data_dict[source["source_dataset_name"]] = source
+        
+        licenses = {}
+        for source_name in self.collected_source_names:
+            if source_name in source_data_dict:
+                licenses[source_name] = source_data_dict[source_name]
+            else:
+                licenses[source_name] = "Could not find a license for this source; please check manually."
+        
+        return json.dumps(licenses, indent=4)
+            
 
 class BaseGeoJSONWriter:
     """
