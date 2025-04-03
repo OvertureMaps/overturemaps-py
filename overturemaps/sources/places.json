@@ -1,0 +1,68 @@
+{
+    "places": [
+        {
+            "source_name": "Meta",
+            "source_dataset_name": "meta",
+            "inception_date": "2023-07-26",
+            "url": "https://www.meta.com/",
+            "url_archived": "https://web.archive.org/web/20250225172536/https://www.meta.com/",
+            "data_url": "",
+            "data_url_archived": "",
+            "data_download_url": [
+                ""
+            ],
+            "license_url": "https://cdla.dev/permissive-2-0/",
+            "license_url_archived": "https://web.archive.org/web/20250124093850/https://cdla.dev/permissive-2-0/",
+            "license_type": "Community Data License Agreement – Permissive, Version 2.0",
+            "license_text": "A Data Recipient may use, modify, and share the Data made available by Data Provider(s) under this agreement if that Data Recipient follows the terms of this agreement.",
+            "license_attribution": "false",
+            "countries": [
+                "Global"
+            ],
+            "coverage_description": "Global",
+            "data_layer_name": "",
+            "file_format": "",
+            "coverage_bbox": [
+                -179.999992,
+                -85,
+                179.9997228,
+                84.9971328
+            ],
+            "update_frequency": "",
+            "known_issues": "",
+            "notes": ""
+        },
+        {
+            "source_name": "Microsoft",
+            "source_dataset_name": "Microsoft",
+            "inception_date": "2023-07-26",
+            "url": "https://www.microsoft.com/",
+            "url_archived": "https://web.archive.org/web/20250225093926/https://www.microsoft.com/en-us/",
+            "data_url": "",
+            "data_url_archived": "",
+            "data_download_url": [
+                ""
+            ],
+            "license_url": "https://cdla.dev/permissive-2-0/",
+            "license_url_archived": "https://web.archive.org/web/20250124093850/https://cdla.dev/permissive-2-0/",
+            "license_type": "Community Data License Agreement – Permissive, Version 2.0",
+            "license_text": "A Data Recipient may use, modify, and share the Data made available by Data Provider(s) under this agreement if that Data Recipient follows the terms of this agreement.",
+            "license_attribution": "false",
+            "countries": [
+                "Global"
+            ],
+            "coverage_description": "Global",
+            "data_layer_name": "",
+            "file_format": "",
+            "coverage_bbox": [
+                -180,
+                -89.913,
+                180,
+                90
+            ],
+            "update_frequency": "",
+            "known_issues": "",
+            "notes": ""
+        }
+    ]
+}

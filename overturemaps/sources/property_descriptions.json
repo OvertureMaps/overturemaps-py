@@ -1,0 +1,98 @@
+{
+    "properties": [
+        {
+            "source_name": {
+                "description": "The name of the source.",
+                "type": "string"
+            },
+            "source_dataset_name": {
+                "type": "string",
+                "description": "The name of the dataset being used from the source. This typically matches the 'dataset' value found in a record's sources column."
+            },
+            "inception_date": {
+                "description": "The first date this source was used in the Overture addresses theme, in YYYY-MM-DD format.",
+                "type": "string"
+            },
+            "url": {
+                "type": "string",
+                "description": "The home page of this source."
+            },
+            "url_archived": {
+                "type": "string",
+                "description": "Archived version of the home page."
+            },
+            "data_url": {
+                "description": "The data page or data portal of this source, typically includes links to data downloads and license links.",
+                "type": "string"
+            },
+            "data_url_archived": {
+                "description": "Archived version of the landing page URL.",
+                "type": "string"
+            },
+            "data_download_url": {
+                "description": "A direct download link of address data from this source, typically a geo-format or compressed file.",
+                "type": "string"
+            },
+            "license_url": {
+                "description": "A link to this source's data license or page referencing the associated license.",
+                "type": "string"
+            },
+            "license_url_archived": {
+                "description": "Archived version of the license URL.",
+                "type": "string"
+            },
+            "license_type": {
+                "description": "The license that data from this source falls under (e.g. CC0 1.0, CC BY 4.0, Open Data License).",
+                "type": "string"
+            },
+            "license_text": {
+                "description": "Relevant license text, direct from the license URL.",
+                "type": "string"
+            },
+            "license_attribution": {
+                "description": "Any required attribution required by this source.",
+                "type": "string"
+            },
+            "countries": {
+                "description": "Name of the countries which is covered in the source data.",
+                "type": "string"
+            },
+            "coverage_description": {
+                "description": "A description of the coverage type of the source data - i.e. national, regional, local.",
+                "type": "string"
+            },
+            "data_layer_name": {
+                "description": "Name of the data layer used from this source.",
+                "type": "string"
+            },            
+            "oa_path": {
+                "description": "File path and name in OpenAddresses, if existing.",
+                "type": "list"
+            },
+            "address_levels": {
+                "description": "Available address level attributes from OpenAddress, if existing.",
+                "type": "list"
+            },
+            "file_format": {
+                "description": "Format of the file used from this source.",
+                "type": "string"
+            },
+            "coverage_bbox": {
+                "description": "The bounding box, in [xmin, ymin, xmax, ymax] format, of this source's coverage",
+                "type": "list"
+            },
+            "update_frequency": {
+                "description": "How frequently the source data is updated.",
+                "type": "string"
+            },
+            "known_issues": {
+                "description": "A description of any issues with the data that are known - i.e. data is incomplete, records are incomplete, coverage is incomplete, etc.",
+                "type": "string"
+            },
+            "notes": {
+                "description": "Freeform notes about this data source, including notes on any pre-processing requirements.",
+                "type": "string"
+            }
+        }
+    ]
+}

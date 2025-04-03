@@ -1,0 +1,93 @@
+{
+    "divisions": [
+        {
+            "source_name": "OpenStreetMap",
+            "source_dataset_name": "openstreetmap",
+            "inception_date": "2024-04-16",
+            "url": "https://www.openstreetmap.org/",
+            "url_archived": "https://web.archive.org/web/20250224061839/https://www.openstreetmap.org/",
+            "data_url": "https://planet.openstreetmap.org/",
+            "data_url_archived": "https://web.archive.org/web/20250224111401/https://planet.openstreetmap.org/",
+            "data_download_url": [
+                ""
+            ],
+            "license_url": "https://www.openstreetmap.org/copyright",
+            "license_url_archived": "https://web.archive.org/web/20250224023118/https://www.openstreetmap.org/copyright",
+            "license_type": "Open Data Commons Open Database License (ODbL)",
+            "license_text": "OpenStreetMap® is open data, licensed under the Open Data Commons Open Database License (ODbL) by the OpenStreetMap Foundation (OSMF).",
+            "license_attribution": "© OpenStreetMap contributors",
+            "countries": [
+                "Global"
+            ],
+            "coverage_description": "Global",
+            "coverage_bbox": [
+                -180,
+                -89.998,
+                180,
+                83.875172
+            ],
+            "update_frequency": "Monthly",
+            "known_issues": "",
+            "notes": ""
+        },
+        {
+            "source_name": "geoBoundaries - Comprehensive Global Administrative Zones (CGAZ)",
+            "source_dataset_name": "geoBoundaries",
+            "inception_date": "2024-04-16",
+            "url": "https://geoboundaries.org/",
+            "url_archived": "https://web.archive.org/web/20250203183605/https://www.geoboundaries.org/",
+            "data_url": "https://www.geoboundaries.org/globalDownloads.html",
+            "data_url_archived": "https://web.archive.org/web/20241227142716/https://www.geoboundaries.org/globalDownloads.html",
+            "data_download_url": [
+                ""
+            ],
+            "license_url": "https://www.geoboundaries.org/#tabs1-js",
+            "license_url_archived": "https://web.archive.org/web/20250203183605/https://www.geoboundaries.org/#tabs1-js",
+            "license_type": "CC BY 4.0",
+            "license_text": "geoBoundaries datasets are provided under the CC BY 4.0 license, which allows for most commmercial, noncommercial, and academic uses.",
+            "license_attribution": "Runfola, D. et al. (2020) geoBoundaries: A global database of political administrative boundaries. PLoS ONE 15(4): e0231866. https://doi.org/10.1371/journal.pone.0231866",
+            "countries": [
+                "Global"
+            ],
+            "coverage_description": "Global",
+            "data_layer_name": "",
+            "file_format": "",
+            "coverage_bbox": [
+                -90.13771319999995,
+                -34.97393429799996,
+                179.8116893452013,
+                60.84566855001649
+            ],
+            "update_frequency": "Monthly",
+            "known_issues": "",
+            "notes": "Global coverage, but used within the theme in selected countries."
+        },
+        {
+            "source_name": "Esri",
+            "source_dataset_name": "Esri Community Maps",
+            "inception_date": "",
+            "url": "http://communitymaps.arcgis.com/home/",
+            "url_archived": "https://web.archive.org/web/2025/http://communitymaps.arcgis.com/home/",
+            "data_url": "",
+            "data_url_archived": "",
+            "data_download_url": [
+                ""
+            ],
+            "license_url": "",
+            "license_url_archived": "",
+            "license_type": "CC-BY 4.0",
+            "license_text": "",
+            "license_attribution": "",
+            "countries": [
+                "Global"
+            ],
+            "coverage_description": "Global",
+            "data_layer_name": "",
+            "file_format": "",
+            "coverage_bbox": [],
+            "update_frequency": "",
+            "known_issues": "",
+            "notes": ""
+        }
+    ]
+}

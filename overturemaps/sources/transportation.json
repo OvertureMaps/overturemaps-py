@@ -1,0 +1,78 @@
+{
+    "transportation": [
+        {
+            "source_name": "TomTom",
+            "source_dataset_name": "TomTom",
+            "inception_date": "2024-09-18",
+            "url": "https://www.tomtom.com/",
+            "url_archived": "https://web.archive.org/web/20250221172537/https://www.tomtom.com/",
+            "data_url": "",
+            "data_url_archived": "",
+            "data_download_url": [],
+            "license_url": "",
+            "license_url_archived": "",
+            "license_type": "",
+            "license_text": "",
+            "license_attribution": "",
+            "countries": [
+                "AE",
+                "CH",
+                "DE",
+                "FR",
+                "GB",
+                "GG",
+                "IM",
+                "IT",
+                "JO",
+                "KW",
+                "MC",
+                "MX",
+                "SA",
+                "SI",
+                "US"
+            ],
+            "coverage_description": "Regional",
+            "data_layer_name": "",
+            "file_format": "",
+            "coverage_bbox": [
+                -114.7960571,
+                16.3983752,
+                55.5053771,
+                58.9188126
+            ],
+            "update_frequency": "Monthly",
+            "known_issues": "",
+            "notes": ""
+        },
+        {
+            "source_name": "OpenStreetMap",
+            "source_dataset_name": "OpenStreetMap",
+            "inception_date": "2023-07-26",
+            "url": "https://www.openstreetmap.org/",
+            "url_archived": "https://web.archive.org/web/20250224061839/https://www.openstreetmap.org/",
+            "data_url": "https://planet.openstreetmap.org/",
+            "data_url_archived": "https://web.archive.org/web/20250224111401/https://planet.openstreetmap.org/",
+            "data_download_url": [
+                ""
+            ],
+            "license_url": "https://www.openstreetmap.org/copyright",
+            "license_url_archived": "https://web.archive.org/web/20250224023118/https://www.openstreetmap.org/copyright",
+            "license_type": "Open Data Commons Open Database License (ODbL)",
+            "license_text": "OpenStreetMap® is open data, licensed under the Open Data Commons Open Database License (ODbL) by the OpenStreetMap Foundation (OSMF).",
+            "license_attribution": "© OpenStreetMap contributors",
+            "countries": [
+                "Global"
+            ],
+            "coverage_description": "Global",
+            "coverage_bbox": [
+                -180,
+                -85.0511284,
+                180,
+                82.5254024
+            ],
+            "update_frequency": "Monthly",
+            "known_issues": "",
+            "notes": ""
+        }
+    ]
+}
