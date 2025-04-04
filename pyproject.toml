@@ -5,6 +5,7 @@ description = "Python tools for interacting with Overture Maps (overturemaps.org
 authors = ["Jacob Wasserman <jwasserman@meta.com>"]
 license = "MIT"
 readme = "README.md"
+include = ["overturemaps/sources/*"]
 
 [tool.poetry.dependencies]
 python = "^3.8"

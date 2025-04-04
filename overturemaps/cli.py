@@ -101,8 +101,8 @@ def cli():
     type=click.Choice(get_all_overture_types()),
     required=True,
 )
-@click.option("-l", "--collect_licenses", is_flag=True)
-def download(bbox, output_format, output, type_, collect_licenses):
+@click.option("-l", "--licenses", is_flag=True)
+def download(bbox, output_format, output, type_, licenses):
     if output is None:
         output = sys.stdout
 
@@ -111,13 +111,13 @@ def download(bbox, output_format, output, type_, collect_licenses):
         return
     
     sources = None
-    if collect_licenses:
-        sources = SourceCollector("./overturemaps/sources", type_)
+    if licenses:
+        sources = SourceCollector("overturemaps/sources", type_)
 
     with get_writer(output_format, output, schema=reader.schema) as writer:
         copy(reader, writer, sources)
     
-    if collect_licenses:
+    if licenses:
         with open("LICENSES_FOR_QUERIED_DATA.json", "w") as f:
             f.write(sources.get_license_info())
 

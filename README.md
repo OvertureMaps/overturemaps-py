@@ -34,6 +34,7 @@ entire dataset for the specified type will be downloaded
 * `-f` (required: one of "geojson", "geojsonseq", "geoparquet"): output format
 * `--output`/`-o` (optional): Location of output file. When omitted output will be written to stdout.
 * `--type`/`-t` (required): The Overture map data type to be downloaded. Examples of types are `building`
+* `--licenses`/`-l` (optional): A flag; outputs the licenses associated with the query results if included.
 for building footprints, `place` for POI places data, etc. Run `overturemaps download --help` for the
 complete list of allowed types
 
