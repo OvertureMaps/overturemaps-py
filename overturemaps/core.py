@@ -6,7 +6,7 @@ import pyarrow.dataset as ds
 import pyarrow.fs as fs
 
 # Allows for optional import of additional dependencies
-try: 
+try:
     import geopandas as gpd
     from geopandas import GeoDataFrame
     HAS_GEOPANDAS = True
@@ -125,7 +125,7 @@ def _dataset_path(overture_type: str) -> str:
     # complete s3 path. Could be discovered by reading from the top-level s3
     # location but this allows to only read the files in the necessary partition.
     theme = type_theme_map[overture_type]
-    return f"overturemaps-us-west-2/release/2025-03-19.0/theme={theme}/type={overture_type}/"
+    return f"overturemaps-us-west-2/release/2025-06-25.0/theme={theme}/type={overture_type}/"
 
 
 def get_all_overture_types() -> List[str]:
