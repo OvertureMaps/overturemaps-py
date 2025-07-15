@@ -18,7 +18,7 @@ import pyarrow.fs as fs
 import pyarrow.parquet as pq
 import shapely.wkb
 
-from . core import record_batch_reader, get_all_overture_types
+from . core import record_batch_reader, get_all_overture_types, get_all_overture_releases
 
 
 def get_writer(output_format, path, schema):
@@ -99,11 +99,19 @@ def cli():
     type=click.Choice(get_all_overture_types()),
     required=True,
 )
-def download(bbox, output_format, output, type_):
+@click.option("-r", "--release", required=False, default='2025-06-25.0', type=click.Path())
+@click.option(
+    "-r",
+    "--release",
+    "release_",
+    type=click.Choice(get_all_overture_releases()),
+    required=True,
+)
+def download(bbox, output_format, output, type_, release_):
     if output is None:
         output = sys.stdout
 
-    reader = record_batch_reader(type_, bbox)
+    reader = record_batch_reader(type_, bbox, release_)
     if reader is None:
         return
 

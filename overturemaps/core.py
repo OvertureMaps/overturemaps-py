@@ -14,11 +14,14 @@ except ImportError:
     HAS_GEOPANDAS = False
     GeoDataFrame = None
 
-def record_batch_reader(overture_type, bbox=None) -> Optional[pa.RecordBatchReader]:
+def record_batch_reader(overture_type, bbox=None, release=None) -> Optional[pa.RecordBatchReader]:
     """
     Return a pyarrow RecordBatchReader for the desired bounding box and s3 path
     """
-    path = _dataset_path(overture_type)
+
+    if release is None:
+        release = '2025-06-25.0'
+    path = _dataset_path(overture_type, release)
 
     if bbox:
         xmin, ymin, xmax, ymax = bbox
@@ -115,7 +118,7 @@ type_theme_map = {
 }
 
 
-def _dataset_path(overture_type: str) -> str:
+def _dataset_path(overture_type: str, release: str) -> str:
     """
     Returns the s3 path of the Overture dataset to use. This assumes overture_type has
     been validated, e.g. by the CLI
@@ -125,8 +128,11 @@ def _dataset_path(overture_type: str) -> str:
     # complete s3 path. Could be discovered by reading from the top-level s3
     # location but this allows to only read the files in the necessary partition.
     theme = type_theme_map[overture_type]
-    return f"overturemaps-us-west-2/release/2025-06-25.0/theme={theme}/type={overture_type}/"
+    return f"overturemaps-us-west-2/release/{release}/theme={theme}/type={overture_type}/"
 
 
 def get_all_overture_types() -> List[str]:
     return list(type_theme_map.keys())
+
+def get_all_overture_releases() -> List[str]:
+    return ['2025-06-25.0', '2025-07-23.0', '2025-08-20.0']
