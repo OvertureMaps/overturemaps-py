@@ -99,13 +99,13 @@ def cli():
     type=click.Choice(get_all_overture_types()),
     required=True,
 )
-@click.option("-r", "--release", required=False, default='2025-06-25.0', type=click.Path())
 @click.option(
     "-r",
     "--release",
     "release_",
+    default='2025-06-25.0',
     type=click.Choice(get_all_overture_releases()),
-    required=True,
+    required=False,
 )
 def download(bbox, output_format, output, type_, release_):
     if output is None:
