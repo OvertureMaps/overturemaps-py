@@ -36,6 +36,8 @@ entire dataset for the specified type will be downloaded
 * `--type`/`-t` (required): The Overture map data type to be downloaded. Examples of types are `building`
 for building footprints, `place` for POI places data, etc. Run `overturemaps download --help` for the
 complete list of allowed types
+* `--connect_timeout` (optional): Socket connection timeout, in seconds. If omitted, the AWS SDK default value is used (typically 1 second).
+* `--request_timeout` (optional): Socket read timeouts on Windows and macOS, in seconds. If omitted, the AWS SDK default value is used (typically 3 seconds). This option is ignored on non-Windows, non-macOS systems.
 
 This downloads data directly from Overture's S3 bucket without interacting with any other servers. 
 By including bounding box extents on each row in the Overture distribution, the underlying Parquet

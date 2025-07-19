@@ -9,12 +9,16 @@ import pyarrow.fs as fs
 try:
     import geopandas as gpd
     from geopandas import GeoDataFrame
+
     HAS_GEOPANDAS = True
 except ImportError:
     HAS_GEOPANDAS = False
     GeoDataFrame = None
 
-def record_batch_reader(overture_type, bbox=None) -> Optional[pa.RecordBatchReader]:
+
+def record_batch_reader(
+    overture_type, bbox=None, connect_timeout=None, request_timeout=None
+) -> Optional[pa.RecordBatchReader]:
     """
     Return a pyarrow RecordBatchReader for the desired bounding box and s3 path
     """
@@ -32,7 +36,13 @@ def record_batch_reader(overture_type, bbox=None) -> Optional[pa.RecordBatchRead
         filter = None
 
     dataset = ds.dataset(
-        path, filesystem=fs.S3FileSystem(anonymous=True, region="us-west-2")
+        path,
+        filesystem=fs.S3FileSystem(
+            anonymous=True,
+            region="us-west-2",
+            connect_timeout=connect_timeout,
+            request_timeout=request_timeout,
+        ),
     )
     batches = dataset.to_batches(filter=filter)
 
@@ -48,7 +58,13 @@ def record_batch_reader(overture_type, bbox=None) -> Optional[pa.RecordBatchRead
     reader = pa.RecordBatchReader.from_batches(geoarrow_schema, non_empty_batches)
     return reader
 
-def geodataframe(overture_type: str, bbox: (float, float, float, float) = None) -> GeoDataFrame:
+
+def geodataframe(
+    overture_type: str,
+    bbox: (float, float, float, float) = None,
+    connect_timeout: int = None,
+    request_timeout: int = None,
+) -> GeoDataFrame:
     """
     Loads geoparquet for specified type into a geopandas dataframe
 
@@ -56,6 +72,8 @@ def geodataframe(overture_type: str, bbox: (float, float, float, float) = None) 
     ----------
     overture_type: type to load
     bbox: optional bounding box for data fetch (xmin, ymin, xmax, ymax)
+    connect_timeout: optional connection timeout in seconds
+    request_timeout: optional request timeout in seconds
 
     Returns
     -------
@@ -65,8 +83,9 @@ def geodataframe(overture_type: str, bbox: (float, float, float, float) = None) 
     if not HAS_GEOPANDAS:
         raise ImportError("geopandas is required to use this function")
 
-    reader = record_batch_reader(overture_type, bbox)
+    reader = record_batch_reader(overture_type, bbox, connect_timeout, request_timeout)
     return gpd.GeoDataFrame.from_arrow(reader)
+
 
 def geoarrow_schema_adapter(schema: pa.Schema) -> pa.Schema:
     """
