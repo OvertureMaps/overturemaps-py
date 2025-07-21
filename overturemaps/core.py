@@ -5,6 +5,26 @@ import pyarrow.compute as pc
 import pyarrow.dataset as ds
 import pyarrow.fs as fs
 
+
+# Keep the latest release at the bottom!
+ALL_RELEASES = [
+    '2024-07-22.0',
+    '2024-08-20.0',
+    '2024-09-18.0',
+    '2024-10-23.0',
+    '2024-11-13.0',
+    '2024-12-18.0',
+    '2025-01-22.0',
+    '2025-02-19.0',
+    '2025-03-19.0',
+    '2025-03-19.1',
+    '2025-04-23.0',
+    '2025-05-21.0',
+    '2025-06-25.0',
+    '2025-07-23.0',
+    '2025-08-20.0'
+]
+
 # Allows for optional import of additional dependencies
 try:
     import geopandas as gpd
@@ -16,14 +36,14 @@ except ImportError:
     GeoDataFrame = None
 
 def record_batch_reader(
-    overture_type, bbox=None, connect_timeout=None, request_timeout=None, release=None
+    overture_type, bbox=None, release=None, connect_timeout=None, request_timeout=None
 ) -> Optional[pa.RecordBatchReader]:
     """
     Return a pyarrow RecordBatchReader for the desired bounding box and s3 path
     """
 
     if release is None:
-        release = '2025-06-25.0'
+        release = ALL_RELEASES[-1]
     path = _dataset_path(overture_type, release)
 
     if bbox:
@@ -152,5 +172,3 @@ def _dataset_path(overture_type: str, release: str) -> str:
 def get_all_overture_types() -> List[str]:
     return list(type_theme_map.keys())
 
-def get_all_overture_releases() -> List[str]:
-    return ['2025-06-25.0', '2025-07-23.0', '2025-08-20.0']

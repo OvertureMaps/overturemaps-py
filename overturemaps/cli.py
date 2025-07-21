@@ -18,7 +18,7 @@ import pyarrow.fs as fs
 import pyarrow.parquet as pq
 import shapely.wkb
 
-from . core import record_batch_reader, get_all_overture_types, get_all_overture_releases
+from . core import record_batch_reader, get_all_overture_types, ALL_RELEASES
 
 
 def get_writer(output_format, path, schema):
@@ -103,19 +103,21 @@ def cli():
 @click.option(
     "-r",
     "--release",
-    "release_",
-    default='2025-06-25.0',
-    type=click.Choice(get_all_overture_releases()),
+    default=ALL_RELEASES[-1],
+    type=click.Choice(ALL_RELEASES),
     required=False,
 )
 
 @click.option("--connect_timeout", required=False, type=int)
 @click.option("--request_timeout", required=False, type=int)
-def download(bbox, output_format, output, type_, connect_timeout, request_timeout):
+def download(bbox, output_format, output, type_, release, connect_timeout, request_timeout):
+    if release not in ALL_RELEASES:
+        return
+    
     if output is None:
         output = sys.stdout
 
-    reader = record_batch_reader(type_, bbox, connect_timeout, request_timeout)
+    reader = record_batch_reader(type_, bbox, release, connect_timeout, request_timeout)
 
     if reader is None:
         return
