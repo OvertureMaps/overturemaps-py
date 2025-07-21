@@ -21,8 +21,8 @@ ALL_RELEASES = [
     '2025-04-23.0',
     '2025-05-21.0',
     '2025-06-25.0',
-    '2025-07-23.0',
-    '2025-08-20.0'
+    # '2025-07-23.0',
+    # '2025-08-20.0',
 ]
 
 # Allows for optional import of additional dependencies
