@@ -112,6 +112,7 @@ def cli():
 @click.option("--request_timeout", required=False, type=int)
 def download(bbox, output_format, output, type_, release, connect_timeout, request_timeout):
     if release not in ALL_RELEASES:
+        print(f"Release {release} not available!")
         return
     
     if output is None:
