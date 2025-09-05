@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "overturemaps"
-version = "0.15.0"
+version = "0.16.0"
 description = "Python tools for interacting with Overture Maps (overturemaps.org) data."
 authors = ["Jacob Wasserman <jwasserman@meta.com>"]
 license = "MIT"
