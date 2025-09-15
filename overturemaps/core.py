@@ -46,9 +46,7 @@ def _get_files_from_stac(theme: str, overture_type: str, bbox: tuple, release: s
     Returns a list of bucket/key paths using the STAC-geoparquet index
     """
     stac_url = f"https://stac.overturemaps.org/{release}/collections.parquet"
-    
     try:
-        
         # Arrow can't read HTTP URLs directly; read into memory first
         with urlopen(stac_url) as response:
             data = response.read()
