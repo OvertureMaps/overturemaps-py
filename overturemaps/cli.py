@@ -108,13 +108,22 @@ def cli():
     required=False,
 )
 
+@click.option(
+    "--no_stac",
+    required=False,
+    type=bool,
+    is_flag=True,
+    default=False,
+    help="If set, directly read from the dataset path instead of using the STAC-geoparquet index."
+)
+
 @click.option("--connect_timeout", required=False, type=int)
 @click.option("--request_timeout", required=False, type=int)
-def download(bbox, output_format, output, type_, release, connect_timeout, request_timeout):
+def download(bbox, output_format, output, type_, release, connect_timeout, request_timeout, no_stac):
     if output is None:
         output = sys.stdout
 
-    reader = record_batch_reader(type_, bbox, release, connect_timeout, request_timeout)
+    reader = record_batch_reader(type_, bbox, release, connect_timeout, request_timeout, no_stac)
 
     if reader is None:
         return

@@ -38,6 +38,7 @@ for building footprints, `place` for POI places data, etc. Run `overturemaps dow
 complete list of allowed types
 * `--connect_timeout` (optional): Socket connection timeout, in seconds. If omitted, the AWS SDK default value is used (typically 1 second).
 * `--request_timeout` (optional): Socket read timeouts on Windows and macOS, in seconds. If omitted, the AWS SDK default value is used (typically 3 seconds). This option is ignored on non-Windows, non-macOS systems.
+* `--no_stac` (optional, flag): By default, the reader uses Overture's [STAC-geoparquet](https://stac-utils.github.io/stac-geoparquet/latest/) catalog to speed up queries. If this flag is set, the data will be read normally.
 
 This downloads data directly from Overture's S3 bucket without interacting with any other servers. 
 By including bounding box extents on each row in the Overture distribution, the underlying Parquet

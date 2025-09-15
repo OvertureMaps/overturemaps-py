@@ -4,6 +4,10 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 import pyarrow.fs as fs
+import pyarrow.parquet as pq
+
+from urllib.request import urlopen
+import io
 
 
 # Keep the latest release at the bottom!
@@ -21,8 +25,9 @@ ALL_RELEASES = [
     '2025-04-23.0',
     '2025-05-21.0',
     '2025-06-25.0',
-    # '2025-07-23.0',
-    # '2025-08-20.0',
+    '2025-07-23.0',
+    '2025-08-20.0',
+    '2025-08-20.1',
 ]
 
 # Allows for optional import of additional dependencies
@@ -35,8 +40,52 @@ except ImportError:
     HAS_GEOPANDAS = False
     GeoDataFrame = None
 
+
+def _get_files_from_stac(theme: str, overture_type: str, bbox: tuple, release: str) -> Optional[List[str]]:
+    """
+    Returns a list of bucket/key paths using the STAC-geoparquet index
+    """
+    stac_url = f"https://stac.overturemaps.org/{release}/collections.parquet"
+    
+    try:
+        
+        # Arrow can't read HTTP URLs directly; read into memory first
+        with urlopen(stac_url) as response:
+            data = response.read()
+            buffer = io.BytesIO(data)
+            stac_table = pq.read_table(buffer)
+        
+        theme_filter = (pc.field("collection") == overture_type) \
+                          & (pc.field("type") == "Feature")
+        
+        xmin, ymin, xmax, ymax = bbox
+        bbox_filter = (
+            (pc.field("bbox", "xmin") < xmax)
+            & (pc.field("bbox", "xmax") > xmin)
+            & (pc.field("bbox", "ymin") < ymax)
+            & (pc.field("bbox", "ymax") > ymin)
+        )
+        
+        combined_filter = theme_filter & bbox_filter
+        table = stac_table.filter(combined_filter)
+        
+        if table.num_rows > 0:
+            file_paths = table.column("assets").to_pylist()
+
+            # clip out the "s3://" prefix
+            s3_paths = [path["aws-s3"]["href"][5:] for path in file_paths]
+            return s3_paths
+        else:
+            print(f"No data found for release {release} in query bbox {bbox}.")
+            return []
+            
+    except Exception as e:
+        print(f"Error reading STAC index at {stac_url}: {e}")
+        return None
+
+
 def record_batch_reader(
-    overture_type, bbox=None, release=None, connect_timeout=None, request_timeout=None
+    overture_type, bbox=None, release=None, connect_timeout=None, request_timeout=None, no_stac=False
 ) -> Optional[pa.RecordBatchReader]:
     """
     Return a pyarrow RecordBatchReader for the desired bounding box and s3 path
@@ -45,6 +94,10 @@ def record_batch_reader(
     if release is None:
         release = ALL_RELEASES[-1]
     path = _dataset_path(overture_type, release)
+
+    intersecting_files = None
+    if bbox and not no_stac:
+        intersecting_files = _get_files_from_stac(type_theme_map[overture_type], overture_type, bbox, release)
 
     if bbox:
         xmin, ymin, xmax, ymax = bbox
@@ -58,7 +111,7 @@ def record_batch_reader(
         filter = None
 
     dataset = ds.dataset(
-        path,
+        intersecting_files if intersecting_files else path,
         filesystem=fs.S3FileSystem(
             anonymous=True,
             region="us-west-2",
