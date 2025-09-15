@@ -109,7 +109,7 @@ def cli():
 )
 
 @click.option(
-    "--no_stac",
+    "--stac/--no-stac",
     required=False,
     type=bool,
     is_flag=True,
@@ -119,11 +119,11 @@ def cli():
 
 @click.option("--connect_timeout", required=False, type=int)
 @click.option("--request_timeout", required=False, type=int)
-def download(bbox, output_format, output, type_, release, connect_timeout, request_timeout, no_stac):
+def download(bbox, output_format, output, type_, release, connect_timeout, request_timeout, stac):
     if output is None:
         output = sys.stdout
 
-    reader = record_batch_reader(type_, bbox, release, connect_timeout, request_timeout, no_stac)
+    reader = record_batch_reader(type_, bbox, release, connect_timeout, request_timeout, stac)
 
     if reader is None:
         return

@@ -83,7 +83,7 @@ def _get_files_from_stac(theme: str, overture_type: str, bbox: tuple, release: s
 
 
 def record_batch_reader(
-    overture_type, bbox=None, release=None, connect_timeout=None, request_timeout=None, no_stac=False
+    overture_type, bbox=None, release=None, connect_timeout=None, request_timeout=None, stac=False
 ) -> Optional[pa.RecordBatchReader]:
     """
     Return a pyarrow RecordBatchReader for the desired bounding box and s3 path
@@ -94,7 +94,7 @@ def record_batch_reader(
     path = _dataset_path(overture_type, release)
 
     intersecting_files = None
-    if bbox and not no_stac:
+    if bbox and stac:
         intersecting_files = _get_files_from_stac(type_theme_map[overture_type], overture_type, bbox, release)
 
     if bbox:
