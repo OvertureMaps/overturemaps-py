@@ -113,7 +113,7 @@ def cli():
     required=False,
     type=bool,
     is_flag=True,
-    default=False,
+    default=True,
     help="If set, directly read from the dataset path instead of using the STAC-geoparquet index."
 )
 
