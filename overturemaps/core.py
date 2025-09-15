@@ -53,8 +53,8 @@ def _get_files_from_stac(theme: str, overture_type: str, bbox: tuple, release: s
             buffer = io.BytesIO(data)
             stac_table = pq.read_table(buffer)
         
-        theme_filter = (pc.field("collection") == overture_type) \
-                          & (pc.field("type") == "Feature")
+        feature_type_filter = (pc.field("collection") == overture_type) \
+                            & (pc.field("type") == "Feature")
         
         xmin, ymin, xmax, ymax = bbox
         bbox_filter = (
@@ -64,7 +64,7 @@ def _get_files_from_stac(theme: str, overture_type: str, bbox: tuple, release: s
             & (pc.field("bbox", "ymax") > ymin)
         )
         
-        combined_filter = theme_filter & bbox_filter
+        combined_filter = feature_type_filter & bbox_filter
         table = stac_table.filter(combined_filter)
         
         if table.num_rows > 0:
