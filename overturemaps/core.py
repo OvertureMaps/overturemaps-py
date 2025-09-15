@@ -73,7 +73,7 @@ def _get_files_from_stac(theme: str, overture_type: str, bbox: tuple, release: s
             file_paths = table.column("assets").to_pylist()
 
             # clip out the "s3://" prefix
-            s3_paths = [path["aws-s3"]["href"][5:] for path in file_paths]
+            s3_paths = [path["aws-s3"]["href"][len('s3://'):] for path in file_paths]
             return s3_paths
         else:
             print(f"No data found for release {release} in query bbox {bbox}.")
