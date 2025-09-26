@@ -19,13 +19,11 @@ ALL_RELEASES = [
 
 # Allows for optional import of additional dependencies
 try:
-    import geopandas as gpd
     from geopandas import GeoDataFrame
 
     HAS_GEOPANDAS = True
 except ImportError:
     HAS_GEOPANDAS = False
-    GeoDataFrame = None
 
 
 def _get_files_from_stac(theme: str, overture_type: str, bbox: tuple, release: str) -> Optional[List[str]]:
@@ -121,9 +119,11 @@ def record_batch_reader(
 
 def geodataframe(
     overture_type: str,
-    bbox: (float, float, float, float) = None,
+    bbox: tuple[float, float, float, float] = None,
+    release: str = None,
     connect_timeout: int = None,
     request_timeout: int = None,
+    stac: bool = False
 ) -> GeoDataFrame:
     """
     Loads geoparquet for specified type into a geopandas dataframe
@@ -146,10 +146,12 @@ def geodataframe(
     reader = record_batch_reader(
         overture_type,
         bbox=bbox,
+        release=release,
         connect_timeout=connect_timeout,
-        request_timeout=request_timeout
+        request_timeout=request_timeout,
+        stac=stac
     )
-    return gpd.GeoDataFrame.from_arrow(reader)
+    return GeoDataFrame.from_arrow(reader)
 
 
 def geoarrow_schema_adapter(schema: pa.Schema) -> pa.Schema:
