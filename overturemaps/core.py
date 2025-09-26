@@ -143,7 +143,12 @@ def geodataframe(
     if not HAS_GEOPANDAS:
         raise ImportError("geopandas is required to use this function")
 
-    reader = record_batch_reader(overture_type, bbox, connect_timeout, request_timeout)
+    reader = record_batch_reader(
+        overture_type,
+        bbox=bbox,
+        connect_timeout=connect_timeout,
+        request_timeout=request_timeout
+    )
     return gpd.GeoDataFrame.from_arrow(reader)
 
 
