@@ -24,6 +24,7 @@ try:
     HAS_GEOPANDAS = True
 except ImportError:
     HAS_GEOPANDAS = False
+    class GeoDataFrame: pass
 
 
 def _get_files_from_stac(theme: str, overture_type: str, bbox: tuple, release: str) -> Optional[List[str]]:
