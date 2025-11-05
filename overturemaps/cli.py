@@ -1,24 +1,26 @@
 """
 Overture Maps (overturemaps.org) command line utility.
 
-Currently provides the ability to extract features from an Overture dataset in a
-specified bounding box in a few different file formats.
+Currently provides the ability to extract features from an Overture dataset
+in a specified bounding box in a few different file formats.
 
 """
+
 import json
 import os
 import sys
-from typing import Optional
 
 import click
-import pyarrow as pa
-import pyarrow.dataset as ds
-import pyarrow.compute as pc
-import pyarrow.fs as fs
 import pyarrow.parquet as pq
 import shapely.wkb
 
-from . core import record_batch_reader, get_all_overture_types, ALL_RELEASES
+from .core import (
+    get_all_overture_types,
+    get_available_releases,
+    get_latest_release,
+    record_batch_reader,
+    record_batch_reader_from_gers,
+)
 
 
 def get_writer(output_format, path, schema):
@@ -78,6 +80,19 @@ class BboxParamType(click.ParamType):
         return bbox
 
 
+def validate_release(ctx, param, value):
+    """Callback to validate release parameter against available releases."""
+    if value is None:
+        return get_latest_release()
+
+    available_releases, _ = get_available_releases()
+    if value not in available_releases:
+        raise click.BadParameter(
+            f"Release '{value}' not found. Available releases: {', '.join(available_releases)}"
+        )
+    return value
+
+
 @click.group()
 def cli():
     pass
@@ -99,34 +114,89 @@ def cli():
     type=click.Choice(get_all_overture_types()),
     required=True,
 )
-
 @click.option(
     "-r",
     "--release",
-    default=ALL_RELEASES[-1],
-    type=click.Choice(ALL_RELEASES),
+    default=None,
+    callback=validate_release,
     required=False,
+    help="Release version (defaults to latest)",
 )
-
 @click.option(
     "--stac/--no-stac",
     required=False,
     type=bool,
     is_flag=True,
     default=True,
-    help="If set, directly read from the dataset path instead of using the STAC-geoparquet index."
+    help="If set, directly read from the dataset path instead of using the STAC-geoparquet index.",
 )
-
 @click.option("--connect_timeout", required=False, type=int)
 @click.option("--request_timeout", required=False, type=int)
-def download(bbox, output_format, output, type_, release, connect_timeout, request_timeout, stac):
+def download(
+    bbox, output_format, output, type_, release, connect_timeout, request_timeout, stac
+):
+    if output_format == "geoparquet" and output is None:
+        raise click.UsageError(
+            "Output file (-o/--output) is required when using geoparquet format"
+        )
+
     if output is None:
         output = sys.stdout
 
-    reader = record_batch_reader(type_, bbox, release, connect_timeout, request_timeout, stac)
+    reader = record_batch_reader(
+        type_, bbox, release, connect_timeout, request_timeout, stac
+    )
 
     if reader is None:
         return
+
+    with get_writer(output_format, output, schema=reader.schema) as writer:
+        copy(reader, writer)
+
+
+@cli.command()
+@click.argument("gers_id", required=True)
+@click.option(
+    "-f",
+    "output_format",
+    type=click.Choice(["geojson", "geojsonseq", "geoparquet"]),
+    default="geojsonseq",
+    required=False,
+    help="Output format (defaults to geojson)",
+)
+@click.option("-o", "--output", required=False, type=click.Path())
+@click.option(
+    "-r",
+    "--release",
+    default=None,
+    callback=validate_release,
+    required=False,
+    help="Release version (defaults to latest)",
+)
+@click.option("--connect_timeout", required=False, type=int)
+@click.option("--request_timeout", required=False, type=int)
+def gers(gers_id, output_format, output, release, connect_timeout, request_timeout):
+    """
+    Download a feature by its GERS ID.
+
+    This command queries the GERS registry to find the feature location,
+    then downloads the feature data in the specified format.
+    """
+    if output_format == "geoparquet" and output is None:
+        raise click.UsageError(
+            "Output file (-o/--output) is required when using geoparquet format"
+        )
+
+    if output is None:
+        output = sys.stdout
+
+    reader = record_batch_reader_from_gers(
+        gers_id, release, connect_timeout, request_timeout
+    )
+
+    if reader is None:
+        click.echo(f"Failed to retrieve data for GERS ID: {gers_id}", err=True)
+        sys.exit(1)
 
     with get_writer(output_format, output, schema=reader.schema) as writer:
         copy(reader, writer)
