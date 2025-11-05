@@ -23,10 +23,9 @@ $ overturemaps download --bbox=-71.068,42.353,-71.058,42.363 -f geojson --type=b
 ## Usage
 
 #### `download`
-There is currently one option to the `overturemaps` utility, `download`. It will download Overture Maps data
-with an optional bounding box into the specified file format. When specifying a bounding box,
-only the minimum data is transferred. The result is streamed out and can handle arbitrarily
-large bounding boxes.
+Download Overture Maps data with an optional bounding box into the specified file format. 
+When specifying a bounding box, only the minimum data is transferred. The result is streamed out and 
+can handle arbitrarily large bounding boxes.
 
 Command-line options:
 * `--bbox` (optional): west, south, east, north longitude and latitude coordinates. When omitted the
@@ -49,6 +48,14 @@ To help find bounding boxes of interest, we like this [bounding box tool](https:
 from [Klokantech](https://www.klokantech.com/). Choose the CSV format and copy the value directly into
 the `--bbox` field here.
 
+#### `gers [UUID]`
+Look up an ID in the GERS Registry. If the feature is present in the latest release, it will download the feature and write it out in the specified format. 
+
+Command-line options:
+* `-f` ("geojson", "geojsonseq", "geoparquet"): output format, defaults to geojsonseq for a single feature on one line.
+* `--output`/`-o` (optional): Location of output file. When omitted output will be written to stdout.
+* `--connect_timeout` (optional): Socket connection timeout, in seconds. If omitted, the AWS SDK default value is used (typically 1 second).
+* `--request_timeout` (optional): Socket read timeouts on Windows and macOS, in seconds. If omitted, the AWS SDK default value is used (typically 3 seconds). This option is ignored on non-Windows, non-macOS systems.
 
 ## Installation
 
