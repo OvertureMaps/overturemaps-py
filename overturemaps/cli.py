@@ -9,6 +9,7 @@ in a specified bounding box in a few different file formats.
 import json
 import os
 import sys
+import uuid
 
 import click
 import pyarrow.parquet as pq
@@ -93,6 +94,20 @@ def validate_release(ctx, param, value):
     return value
 
 
+def validate_gers_id(ctx, param, value):
+    """Callback to validate GERS ID is a valid UUID."""
+    if not value:
+        raise click.BadParameter("GERS ID cannot be empty")
+
+    try:
+        # Try to parse as UUID - this validates the format
+        # Convert to standard format with dashes (lowercase with dashes)
+        parsed_uuid = uuid.UUID(value)
+        return str(parsed_uuid)
+    except ValueError:
+        raise click.BadParameter(f"GERS ID must be a valid UUID. Got: '{value}'")
+
+
 @click.group()
 def cli():
     pass
@@ -155,7 +170,7 @@ def download(
 
 
 @cli.command()
-@click.argument("gers_id", required=True)
+@click.argument("gers_id", required=True, callback=validate_gers_id)
 @click.option(
     "-f",
     "output_format",
@@ -185,7 +200,10 @@ def gers(gers_id, output_format, output, connect_timeout, request_timeout):
     reader = record_batch_reader_from_gers(gers_id, connect_timeout, request_timeout)
 
     if reader is None:
-        click.echo(f"Failed to retrieve data for GERS ID: {gers_id}", err=True)
+        click.echo(
+            f"A feature with this GERS ID is not present in the latest Overture release",
+            err=True,
+        )
         sys.exit(1)
 
     with get_writer(output_format, output, schema=reader.schema) as writer:
