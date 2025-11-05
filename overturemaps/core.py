@@ -343,24 +343,23 @@ def get_all_overture_types() -> List[str]:
 REGISTRY_MANIFEST_URL = "https://labs.overturemaps.org/data/registry-manifest.json"
 
 
-def query_gers_registry(
-    gers_id: str, release: str = None
-) -> Optional[Tuple[str, List[float]]]:
+def query_gers_registry(gers_id: str) -> Optional[Tuple[str, List[float]]]:
     """
     Query the GERS registry to get the filepath and bbox for a given GERS ID.
+
+    The registry always uses the latest release.
 
     Parameters
     ----------
     gers_id: The GERS ID to look up
-    release: Optional release version (defaults to latest)
 
     Returns
     -------
     Tuple of (filepath, bbox) where bbox is [xmin, ymin, xmax, ymax], or None if not found
     """
-    if release is None:
-        release = get_latest_release()
+    import sys
 
+    release = get_latest_release()
     release_path = f"overturemaps-us-west-2/release/{release}"
     gers_id_lower = gers_id.lower()
 
@@ -381,7 +380,9 @@ def query_gers_registry(
                 break
 
         if registry_file is None:
-            print(f"GERS ID '{gers_id}' not found in registry manifest")
+            print(
+                f"GERS ID '{gers_id}' not found in registry manifest", file=sys.stderr
+            )
             return None
 
         # Read the specific registry file with filter (predicate pushdown)
@@ -395,47 +396,86 @@ def query_gers_registry(
         )
 
         if filtered_table.num_rows == 0:
-            print(f"GERS ID '{gers_id}' not found in registry file {registry_file}")
+            print(
+                f"GERS ID '{gers_id}' not found in registry file {registry_file}",
+                file=sys.stderr,
+            )
             return None
 
         # Get the first (should be only) result
         row = filtered_table.to_pylist()[0]
         path = row["path"]
-        bbox_struct = row["bbox"]
+        bbox_struct = row.get("bbox")
+        version = row.get("version")
+        first_seen = row.get("first_seen")
+        last_seen = row.get("last_seen")
+        last_changed = row.get("last_changed")
+
+        # Check if path is NULL - means feature is not present in current release
+        if path is None:
+            print(
+                f"GERS ID '{gers_id}' found in registry but not present in release {release}",
+                file=sys.stderr,
+            )
+            print(f"  Version: {version}", file=sys.stderr)
+            print(f"  First seen: {first_seen}", file=sys.stderr)
+            print(f"  Last seen: {last_seen}", file=sys.stderr)
+            if last_changed:
+                print(f"  Last changed: {last_changed}", file=sys.stderr)
+            return None
 
         # Construct full filepath
         if not path.startswith("/"):
             path = "/" + path
         filepath = f"{release_path}{path}"
 
-        # Extract bbox values
-        bbox = [
-            bbox_struct["xmin"],
-            bbox_struct["ymin"],
-            bbox_struct["xmax"],
-            bbox_struct["ymax"],
-        ]
+        # Extract bbox values if available
+        if bbox_struct is not None:
+            bbox = [
+                bbox_struct["xmin"],
+                bbox_struct["ymin"],
+                bbox_struct["xmax"],
+                bbox_struct["ymax"],
+            ]
+        else:
+            bbox = None
+
+        # Write registry information to stderr
+        print(f"Found GERS ID '{gers_id}' in release {release}", file=sys.stderr)
+        print(f"  Version: {version}", file=sys.stderr)
+        print(f"  Filepath: s3://{filepath}", file=sys.stderr)
+        if bbox is not None:
+            print(
+                f"  Bbox: [{bbox[0]:.6f}, {bbox[1]:.6f}, {bbox[2]:.6f}, {bbox[3]:.6f}]",
+                file=sys.stderr,
+            )
+        else:
+            print(f"  Bbox: None", file=sys.stderr)
+        print(f"  First seen: {first_seen}", file=sys.stderr)
+        print(f"  Last seen: {last_seen}", file=sys.stderr)
+        if last_changed:
+            print(f"  Last changed: {last_changed}", file=sys.stderr)
 
         return (filepath, bbox)
 
     except Exception as e:
-        print(f"Error querying GERS registry: {e}")
+        print(f"Error querying GERS registry: {e}", file=sys.stderr)
         return None
 
 
 def record_batch_reader_from_gers(
     gers_id: str,
-    release: str = None,
     connect_timeout: int = None,
     request_timeout: int = None,
 ) -> Optional[pa.RecordBatchReader]:
     """
     Return a pyarrow RecordBatchReader for a specific GERS ID by querying the registry.
 
+    The registry always uses the latest release.
+
     Parameters
     ----------
     gers_id: The GERS ID to look up
-    release: Optional release version (defaults to latest)
     connect_timeout: Optional connection timeout in seconds
     request_timeout: Optional request timeout in seconds
 
@@ -443,25 +483,30 @@ def record_batch_reader_from_gers(
     -------
     RecordBatchReader with the feature data, or None if not found
     """
-    result = query_gers_registry(gers_id, release)
+    result = query_gers_registry(gers_id)
 
     if result is None:
         return None
 
     filepath, bbox = result
 
-    xmin, ymin, xmax, ymax = bbox
-    filter_expr = (
-        (pc.field("id") == gers_id.lower())
-        & (pc.field("bbox", "xmin") == xmin)
-        & (pc.field("bbox", "ymin") == ymin)
-        & (pc.field("bbox", "xmax") == xmax)
-        & (pc.field("bbox", "ymax") == ymax)
-    )
+    # Build filter expression based on ID and bbox (if available)
+    filter_expr = pc.field("id") == gers_id.lower()
 
-    return _create_s3_record_batch_reader(
-        filepath,
-        filter_expr=filter_expr,
-        connect_timeout=connect_timeout,
-        request_timeout=request_timeout,
-    )
+    if bbox is not None:
+        xmin, ymin, xmax, ymax = bbox
+        bbox_filter = (
+            (pc.field("bbox", "xmin") == xmin)
+            & (pc.field("bbox", "ymin") == ymin)
+            & (pc.field("bbox", "xmax") == xmax)
+            & (pc.field("bbox", "ymax") == ymax)
+        )
+        filter_expr = filter_expr & bbox_filter
+
+        return _create_s3_record_batch_reader(
+            filepath,
+            filter_expr=filter_expr,
+            connect_timeout=connect_timeout,
+            request_timeout=request_timeout,
+        )
+    return None

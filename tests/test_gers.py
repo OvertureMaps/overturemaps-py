@@ -127,16 +127,16 @@ class TestQueryGersRegistry:
 
         assert result is None
 
-    def test_query_gers_registry_with_custom_release(
+    def test_query_gers_registry_always_uses_latest_release(
         self, mock_manifest, mock_registry_table
     ):
-        """Test GERS lookup with custom release version."""
+        """Test GERS lookup always uses latest release from the registry."""
         gers_id = "0b7fc702-49e7-4b35-81cd-a19acefe0696"
-        custom_release = "2025-09-24.0"
+        latest_release = "2025-10-22.0"
 
         with patch("overturemaps.core.urlopen") as mock_urlopen, patch(
             "overturemaps.core.pq.read_table", return_value=mock_registry_table
-        ):
+        ), patch("overturemaps.core.get_latest_release", return_value=latest_release):
 
             mock_manifest_response = MagicMock()
             mock_manifest_response.__enter__ = Mock(return_value=mock_manifest_response)
@@ -144,11 +144,11 @@ class TestQueryGersRegistry:
             mock_urlopen.return_value = mock_manifest_response
 
             with patch("json.load", return_value=mock_manifest):
-                result = query_gers_registry(gers_id, release=custom_release)
+                result = query_gers_registry(gers_id)
 
         assert result is not None
         filepath, _ = result
-        assert f"/release/{custom_release}/" in filepath
+        assert f"/release/{latest_release}/" in filepath
 
 
 class TestRecordBatchReaderFromGers:
@@ -183,7 +183,7 @@ class TestRecordBatchReaderFromGers:
             )
 
             # Verify query_gers_registry was called
-            mock_query.assert_called_once_with(gers_id, None)
+            mock_query.assert_called_once_with(gers_id)
 
             # Verify _create_s3_record_batch_reader was called with correct args
             assert mock_create_reader.called

@@ -165,17 +165,9 @@ def download(
     help="Output format (defaults to geojson)",
 )
 @click.option("-o", "--output", required=False, type=click.Path())
-@click.option(
-    "-r",
-    "--release",
-    default=None,
-    callback=validate_release,
-    required=False,
-    help="Release version (defaults to latest)",
-)
 @click.option("--connect_timeout", required=False, type=int)
 @click.option("--request_timeout", required=False, type=int)
-def gers(gers_id, output_format, output, release, connect_timeout, request_timeout):
+def gers(gers_id, output_format, output, connect_timeout, request_timeout):
     """
     Download a feature by its GERS ID.
 
@@ -190,9 +182,7 @@ def gers(gers_id, output_format, output, release, connect_timeout, request_timeo
     if output is None:
         output = sys.stdout
 
-    reader = record_batch_reader_from_gers(
-        gers_id, release, connect_timeout, request_timeout
-    )
+    reader = record_batch_reader_from_gers(gers_id, connect_timeout, request_timeout)
 
     if reader is None:
         click.echo(f"Failed to retrieve data for GERS ID: {gers_id}", err=True)
