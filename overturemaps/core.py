@@ -11,9 +11,43 @@ import pyarrow.parquet as pq
 
 STAC_CATALOG_URL = "https://stac.overturemaps.org/catalog.json"
 
-# Cache for releases to avoid repeated network calls
-_cached_releases = None
-_cached_latest_release = None
+# Cache for STAC catalog to avoid repeated network calls
+_cached_stac_catalog = None
+
+# Allows for optional import of additional dependencies
+try:
+    import geopandas as gpd
+    from geopandas import GeoDataFrame
+
+    HAS_GEOPANDAS = True
+except ImportError:
+    HAS_GEOPANDAS = False
+    GeoDataFrame = None
+
+
+def _get_stac_catalog() -> dict:
+    """
+    Fetch and cache the STAC catalog.
+
+    Returns
+    -------
+    dict: The STAC catalog JSON
+    """
+    global _cached_stac_catalog
+
+    if _cached_stac_catalog is not None:
+        return _cached_stac_catalog
+
+    try:
+        with urlopen(STAC_CATALOG_URL) as response:
+            catalog = json.load(response)
+
+        # Cache the catalog
+        _cached_stac_catalog = catalog
+        return catalog
+
+    except Exception as e:
+        raise Exception(f"Could not fetch STAC catalog: {e}") from e
 
 
 def get_available_releases() -> Tuple[List[str], str]:
@@ -26,42 +60,21 @@ def get_available_releases() -> Tuple[List[str], str]:
         - all_releases is a list of release version strings
         - latest_release is the latest release version string
     """
-    global _cached_releases, _cached_latest_release
+    catalog = _get_stac_catalog()
 
-    if _cached_releases is not None and _cached_latest_release is not None:
-        return _cached_releases, _cached_latest_release
+    latest_release = catalog.get("latest")
 
-    try:
-        with urlopen(STAC_CATALOG_URL) as response:
-            catalog = json.load(response)
+    # Extract release versions from the child links
+    releases = []
+    for link in catalog.get("links", []):
+        if link.get("rel") == "child":
+            href = link.get("href", "")
+            # href format is "./2025-09-24.0/catalog.json"
+            release_version = href.strip("./").split("/")[0]
+            if release_version:
+                releases.append(release_version)
 
-        latest_release = catalog.get("latest")
-
-        # Extract release versions from the child links
-        releases = []
-        for link in catalog.get("links", []):
-            if link.get("rel") == "child":
-                href = link.get("href", "")
-                # href format is "./2025-09-24.0/catalog.json"
-                release_version = href.strip("./").split("/")[0]
-                if release_version:
-                    releases.append(release_version)
-
-        # Cache the results
-        _cached_releases = releases
-        _cached_latest_release = latest_release
-
-        return releases, latest_release
-
-    except Exception as e:
-        print(f"Warning: Could not fetch releases from STAC catalog: {e}")
-        print("Falling back to hardcoded releases")
-        # Fallback to hardcoded releases
-        fallback_releases = [
-            "2025-09-24.0",
-            "2025-10-22.0",
-        ]
-        return fallback_releases, fallback_releases[-1]
+    return releases, latest_release
 
 
 def get_latest_release() -> str:
@@ -99,16 +112,6 @@ class _ReleasesProxy:
 
 
 ALL_RELEASES = _ReleasesProxy()
-
-# Allows for optional import of additional dependencies
-try:
-    import geopandas as gpd
-    from geopandas import GeoDataFrame
-
-    HAS_GEOPANDAS = True
-except ImportError:
-    HAS_GEOPANDAS = False
-    GeoDataFrame = None
 
 
 def _get_files_from_stac(
@@ -340,7 +343,43 @@ def get_all_overture_types() -> List[str]:
     return list(type_theme_map.keys())
 
 
-REGISTRY_MANIFEST_URL = "https://labs.overturemaps.org/data/registry-manifest.json"
+# Registry manifest is now part of the STAC catalog
+# Access via catalog.json -> registry property -> manifest field
+
+
+def _binary_search_manifest(
+    manifest_tuples: List[Tuple[str, str]], gers_id: str
+) -> Optional[str]:
+    """
+    Binary search through manifest tuples to find the file containing the given GERS ID.
+
+    Parameters
+    ----------
+    manifest_tuples: List of (filename, max_id) tuples, sorted by max_id
+    gers_id: The GERS ID to search for (lowercase)
+
+    Returns
+    -------
+    Filename containing the ID, or None if not found
+    """
+    left, right = 0, len(manifest_tuples) - 1
+
+    while left <= right:
+        mid = (left + right) // 2
+        filename, max_id = manifest_tuples[mid]
+
+        if gers_id <= max_id:
+            # Check if this is the first file where max_id >= gers_id
+            if mid == 0 or manifest_tuples[mid - 1][1] < gers_id:
+                return filename
+            else:
+                # Search in the left half
+                right = mid - 1
+        else:
+            # Search in the right half
+            left = mid + 1
+
+    return None
 
 
 def query_gers_registry(gers_id: str) -> Optional[Tuple[str, List[float]]]:
@@ -364,25 +403,29 @@ def query_gers_registry(gers_id: str) -> Optional[Tuple[str, List[float]]]:
     gers_id_lower = gers_id.lower()
 
     try:
-        # Query the registry manifest to find which file contains this ID
-        with urlopen(REGISTRY_MANIFEST_URL) as response:
-            manifest = json.load(response)
+        # Get the cached STAC catalog
+        catalog = _get_stac_catalog()
 
-        # The manifest has "bounds" (list of [min_id, max_id] pairs) and "files"
-        bounds = manifest.get("bounds", [])
-        files = manifest.get("files", [])
+        # Get the registry object from the catalog
+        registry = catalog.get("registry")
+        if registry is None:
+            print("Registry configuration not found in STAC catalog", file=sys.stderr)
+            return None
 
-        # Find the registry file that contains this GERS ID
-        registry_file = None
-        for i, (min_id, max_id) in enumerate(bounds):
-            if min_id <= gers_id_lower <= max_id:
-                registry_file = files[i]
-                break
+        # The registry contains 'path' and 'manifest'
+        # manifest is a list of [filename, max_id] tuples
+        registry_path = registry.get("path", "")
+        manifest_tuples = registry.get("manifest", [])
+
+        if not manifest_tuples:
+            print("Registry manifest is empty in STAC catalog", file=sys.stderr)
+            return None
+
+        # Use binary search to find the file containing this GERS ID
+        registry_file = _binary_search_manifest(manifest_tuples, gers_id_lower)
 
         if registry_file is None:
-            print(
-                f"GERS ID '{gers_id}' not found in registry manifest", file=sys.stderr
-            )
+            print(f"{gers_id} does not exist in the GERS Registry.", file=sys.stderr)
             return None
 
         # Read the specific registry file with filter (predicate pushdown)
@@ -396,10 +439,7 @@ def query_gers_registry(gers_id: str) -> Optional[Tuple[str, List[float]]]:
         )
 
         if filtered_table.num_rows == 0:
-            print(
-                f"GERS ID '{gers_id}' not found in registry file {registry_file}",
-                file=sys.stderr,
-            )
+            print(f"{gers_id} does not exist in the GERS Registry.", file=sys.stderr)
             return None
 
         # Get the first (should be only) result
@@ -467,9 +507,10 @@ def record_batch_reader_from_gers(
     gers_id: str,
     connect_timeout: int = None,
     request_timeout: int = None,
+    registry_result: Optional[Tuple[str, List[float]]] = None,
 ) -> Optional[pa.RecordBatchReader]:
     """
-    Return a pyarrow RecordBatchReader for a specific GERS ID by querying the registry.
+    Return a pyarrow RecordBatchReader for a specific GERS ID.
 
     The registry always uses the latest release.
 
@@ -478,15 +519,20 @@ def record_batch_reader_from_gers(
     gers_id: The GERS ID to look up
     connect_timeout: Optional connection timeout in seconds
     request_timeout: Optional request timeout in seconds
+    registry_result: Optional pre-fetched registry result (filepath, bbox)
+                    to avoid duplicate registry queries
 
     Returns
     -------
     RecordBatchReader with the feature data, or None if not found
     """
-    result = query_gers_registry(gers_id)
-
-    if result is None:
-        return None
+    # Use pre-fetched result if provided, otherwise query the registry
+    if registry_result is None:
+        result = query_gers_registry(gers_id)
+        if result is None:
+            return None
+    else:
+        result = registry_result
 
     filepath, bbox = result
 
@@ -503,10 +549,9 @@ def record_batch_reader_from_gers(
         )
         filter_expr = filter_expr & bbox_filter
 
-        return _create_s3_record_batch_reader(
-            filepath,
-            filter_expr=filter_expr,
-            connect_timeout=connect_timeout,
-            request_timeout=request_timeout,
-        )
-    return None
+    return _create_s3_record_batch_reader(
+        filepath,
+        filter_expr=filter_expr,
+        connect_timeout=connect_timeout,
+        request_timeout=request_timeout,
+    )

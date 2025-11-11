@@ -175,20 +175,39 @@ def download(
     "-f",
     "output_format",
     type=click.Choice(["geojson", "geojsonseq", "geoparquet"]),
-    default="geojsonseq",
+    default=None,
     required=False,
-    help="Output format (defaults to geojson)",
+    help="Output format. If not specified, only registry information will be displayed.",
 )
 @click.option("-o", "--output", required=False, type=click.Path())
 @click.option("--connect_timeout", required=False, type=int)
 @click.option("--request_timeout", required=False, type=int)
 def gers(gers_id, output_format, output, connect_timeout, request_timeout):
     """
-    Download a feature by its GERS ID.
+    Query the GERS registry for a feature by its GERS ID.
 
-    This command queries the GERS registry to find the feature location,
-    then downloads the feature data in the specified format.
+    By default, this command only queries the registry and displays
+    information about the feature (version, filepath, bbox, etc.) without
+    downloading the feature data.
+
+    To download the actual feature data, specify an output format using -f/--format.
     """
+    from .core import query_gers_registry
+
+    # First, query the registry to get feature information
+    result = query_gers_registry(gers_id)
+
+    if result is None:
+        # Error message already printed by query_gers_registry
+        sys.exit(1)
+
+    # If no format specified, we're done - just show the registry info
+    if output_format is None:
+        click.echo(f"\nRegistry lookup complete for GERS ID: {gers_id}", err=True)
+        click.echo("To download the feature data, use -f/--format option.", err=True)
+        return
+
+    # Format specified - proceed to download the feature
     if output_format == "geoparquet" and output is None:
         raise click.UsageError(
             "Output file (-o/--output) is required when using geoparquet format"
@@ -197,11 +216,14 @@ def gers(gers_id, output_format, output, connect_timeout, request_timeout):
     if output is None:
         output = sys.stdout
 
-    reader = record_batch_reader_from_gers(gers_id, connect_timeout, request_timeout)
+    # Pass the registry result to avoid duplicate query
+    reader = record_batch_reader_from_gers(
+        gers_id, connect_timeout, request_timeout, registry_result=result
+    )
 
     if reader is None:
         click.echo(
-            f"A feature with this GERS ID is not present in the latest Overture release",
+            f"Could not fetch feature data for GERS ID '{gers_id}'",
             err=True,
         )
         sys.exit(1)
