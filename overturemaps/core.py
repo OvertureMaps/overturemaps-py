@@ -16,13 +16,12 @@ _cached_stac_catalog = None
 
 # Allows for optional import of additional dependencies
 try:
-    import geopandas as gpd
     from geopandas import GeoDataFrame
 
     HAS_GEOPANDAS = True
 except ImportError:
     HAS_GEOPANDAS = False
-    GeoDataFrame = None
+    class GeoDataFrame: pass
 
 
 def _get_stac_catalog() -> dict:
@@ -251,9 +250,11 @@ def record_batch_reader(
 
 def geodataframe(
     overture_type: str,
-    bbox: (float, float, float, float) = None,
+    bbox: tuple[float, float, float, float] = None,
+    release: str = None,
     connect_timeout: int = None,
     request_timeout: int = None,
+    stac: bool = False
 ) -> GeoDataFrame:
     """
     Loads geoparquet for specified type into a geopandas dataframe
@@ -273,8 +274,15 @@ def geodataframe(
     if not HAS_GEOPANDAS:
         raise ImportError("geopandas is required to use this function")
 
-    reader = record_batch_reader(overture_type, bbox, connect_timeout, request_timeout)
-    return gpd.GeoDataFrame.from_arrow(reader)
+    reader = record_batch_reader(
+        overture_type,
+        bbox=bbox,
+        release=release,
+        connect_timeout=connect_timeout,
+        request_timeout=request_timeout,
+        stac=stac
+    )
+    return GeoDataFrame.from_arrow(reader)
 
 
 def geoarrow_schema_adapter(schema: pa.Schema) -> pa.Schema:
