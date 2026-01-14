@@ -74,3 +74,19 @@ overturemaps is also on [conda-forge](https://anaconda.org/conda-forge/overturem
 ```shell
 conda install -c conda-forge overturemaps
 ```
+
+### Conda Best Practices
+
+If you're using conda, we recommend installing overturemaps in a dedicated environment to avoid dependency conflicts:
+
+```shell
+conda create -n overture python=3.12
+conda activate overture
+pip install overturemaps
+```
+
+To verify your installed version:
+
+```shell
+overturemaps --version
+```
