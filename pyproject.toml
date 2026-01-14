@@ -1,38 +1,36 @@
-[tool.poetry]
+[project]
 name = "overturemaps"
 version = "0.18.0"
 description = "Python tools for interacting with Overture Maps (overturemaps.org) data."
-authors = ["Jacob Wasserman <jwasserman@meta.com>"]
+authors = [{name = "Jacob Wasserman", email = "jwasserman@meta.com"}]
 license = "MIT"
 readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.3.0",
+    "pyarrow>=15.0.2",
+    "shapely>=2.1.0",
+    # numpy is not directly imported in the codebase, but we include it as a dependency
+    # because: (1) it's a natural companion to pyarrow and shapely for geospatial workflows,
+    # (2) pyarrow has excellent numpy interop (.to_numpy(), pa.array(numpy_arr)),
+    # (3) if this project evolves into a library, users will expect numpy for array operations,
+    # (4) it's already a transitive dependency of geopandas when that optional extra is installed.
+    # Keeping it signals that this package is ready for data science workflows.
+    "numpy>=1.26.4",
+]
 
-[tool.poetry.dependencies]
-python = "^3.10"
-click = ">=8.3.0"
-pyarrow = ">=15.0.2"
-shapely = ">=2.1.0"
+[project.optional-dependencies]
+geopandas = ["geopandas>=1.1.0"]
 
-# numpy is not directly imported in the codebase, but we include it as a dependency
-# because: (1) it's a natural companion to pyarrow and shapely for geospatial workflows,
-# (2) pyarrow has excellent numpy interop (.to_numpy(), pa.array(numpy_arr)),
-# (3) if this project evolves into a library, users will expect numpy for array operations,
-# (4) it's already a transitive dependency of geopandas when that optional extra is installed.
-# Keeping it signals that this package is ready for data science workflows.
-numpy = ">=1.26.4"
+[project.scripts]
+overturemaps = "overturemaps.cli:cli"
 
-geopandas = { version = ">=1.1.0", optional = true, python = ">=3.10" }
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.0.0"
-pytest-mock = "^3.11.0"
-
-[tool.poetry.extras]
-geopandas = ["geopandas"]
-
-[tool.poetry.scripts]
-overturemaps = 'overturemaps.cli:cli'
-
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-mock>=3.11.0",
+]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
