@@ -6,6 +6,7 @@ in a specified bounding box in a few different file formats.
 
 """
 
+import importlib.metadata
 import json
 import os
 import sys
@@ -109,6 +110,10 @@ def validate_gers_id(ctx, param, value):
 
 
 @click.group()
+@click.version_option(
+    version=importlib.metadata.version("overturemaps"),
+    prog_name="overturemaps",
+)
 def cli():
     pass
 
