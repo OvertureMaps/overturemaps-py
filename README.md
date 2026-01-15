@@ -74,3 +74,9 @@ overturemaps is also on [conda-forge](https://anaconda.org/conda-forge/overturem
 ```shell
 conda install -c conda-forge overturemaps
 ```
+
+If you have [uv](https://docs.astral.sh/uv/) installed, you can run overturemaps [with uvx](https://docs.astral.sh/uv/guides/tools/#running-tools) without installing it:
+
+```shell
+uvx overturemaps download --bbox=-71.068,42.353,-71.058,42.363 -f geojson --type=building -o boston.parquet
+```
