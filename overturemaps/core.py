@@ -21,7 +21,9 @@ try:
     HAS_GEOPANDAS = True
 except ImportError:
     HAS_GEOPANDAS = False
-    class GeoDataFrame: pass
+
+    class GeoDataFrame:
+        pass
 
 
 def _get_stac_catalog() -> dict:
@@ -146,7 +148,10 @@ def _get_files_from_stac(
             file_paths = table.column("assets").to_pylist()
 
             # clip out the "s3://" prefix
-            s3_paths = [path["aws-s3"]["href"][len("s3://") :] for path in file_paths]
+            s3_paths = [
+                path["aws"]["alternate"]["s3"]["href"][len("s3://") :]
+                for path in file_paths
+            ]
             return s3_paths
         else:
             print(f"No data found for release {release} in query bbox {bbox}.")
@@ -254,7 +259,7 @@ def geodataframe(
     release: str = None,
     connect_timeout: int = None,
     request_timeout: int = None,
-    stac: bool = False
+    stac: bool = False,
 ) -> GeoDataFrame:
     """
     Loads geoparquet for specified type into a geopandas dataframe
@@ -280,7 +285,7 @@ def geodataframe(
         release=release,
         connect_timeout=connect_timeout,
         request_timeout=request_timeout,
-        stac=stac
+        stac=stac,
     )
     return GeoDataFrame.from_arrow(reader)
 
