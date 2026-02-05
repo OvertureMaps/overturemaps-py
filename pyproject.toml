@@ -1,6 +1,6 @@
 [project]
 name = "overturemaps"
-version = "0.18.0"
+version = "0.18.1"
 description = "Python tools for interacting with Overture Maps (overturemaps.org) data."
 authors = [{name = "Jacob Wasserman", email = "jwasserman@meta.com"}]
 license = "MIT"
