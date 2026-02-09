@@ -16,7 +16,7 @@ until a stable release, but we will keep the documentation here up-to-date.
 
 Download the building footprints for the specific bounding box as GeoJSON and save to a file named "boston.geojson"
 
-```
+```bash
 overturemaps download --bbox=-71.068,42.353,-71.058,42.363 -f geojson --type=building -o boston.geojson
 ```
 
@@ -39,7 +39,7 @@ Command-line options:
   complete list of allowed types
 - `--connect_timeout` (optional): Socket connection timeout, in seconds. If omitted, the AWS SDK default value is used (typically 1 second).
 - `--request_timeout` (optional): Socket read timeouts on Windows and macOS, in seconds. If omitted, the AWS SDK default value is used (typically 3 seconds). This option is ignored on non-Windows, non-macOS systems.
-- `--stac/--no-stac` (optional): By default, the reader uses Overture's [STAC-geoparquet](https://stac-utils.github.io/stac-geoparquet/latest/) catalog to speed up queries. If the `--no-stac` flag is present, the data will be read normally.
+- `--stac/--no-stac` (optional): By default, the reader uses Overture's [STAC catalog](https://stac.overturemaps.org/) to speed up queries to the latest release. If the `--no-stac` flag is present, the CLI will use the S3 path for the latest release directly.
 
 This downloads data directly from Overture's S3 bucket without interacting with any other servers.
 By including bounding box extents on each row in the Overture distribution, the underlying Parquet
@@ -65,18 +65,26 @@ Command-line options:
 
 To install overturemaps from [PyPi](https://pypi.org/project/overturemaps/) using pip
 
-```shell
+```bash
 pip install overturemaps
 ```
 
 overturemaps is also on [conda-forge](https://anaconda.org/conda-forge/overturemaps) and can be installed using conda, mamba, or pixi. To install overturemaps using conda:
 
-```shell
+```bash
 conda install -c conda-forge overturemaps
 ```
 
 If you have [uv](https://docs.astral.sh/uv/) installed, you can run overturemaps [with uvx](https://docs.astral.sh/uv/guides/tools/#running-tools) without installing it:
 
-```shell
+```bash
 uvx overturemaps download --bbox=-71.068,42.353,-71.058,42.363 -f geojson --type=building -o boston.parquet
 ```
+
+## Development
+
+```bash
+uv sync
+uv run pytest tests/
+```
+
