@@ -715,18 +715,24 @@ def changelog_query(release, theme, type_, bbox, output):
                 row_data = []
                 if not (theme and type_):
                     row_data.append(theme_name)
-                
+
                 # Calculate percentages
                 add_pct = (len(ids_add) / total * 100) if total > 0 else 0
                 mod_pct = (len(ids_mod) / total * 100) if total > 0 else 0
                 del_pct = (len(ids_del) / total * 100) if total > 0 else 0
-                
+
                 row_data.extend(
                     [
                         type_name,
-                        f"{len(ids_add):,} ({add_pct:.1f}%)" if len(ids_add) > 0 else "-",
-                        f"{len(ids_mod):,} ({mod_pct:.1f}%)" if len(ids_mod) > 0 else "-",
-                        f"{len(ids_del):,} ({del_pct:.1f}%)" if len(ids_del) > 0 else "-",
+                        f"{len(ids_add):,} ({add_pct:.1f}%)"
+                        if len(ids_add) > 0
+                        else "-",
+                        f"{len(ids_mod):,} ({mod_pct:.1f}%)"
+                        if len(ids_mod) > 0
+                        else "-",
+                        f"{len(ids_del):,} ({del_pct:.1f}%)"
+                        if len(ids_del) > 0
+                        else "-",
                         f"{total:,}",
                     ]
                 )
@@ -824,13 +830,13 @@ def changelog_summary(release, theme, type_):
             row_data = []
             if not (theme and type_):
                 row_data.append(theme_name)
-            
+
             # Calculate percentages
             add_pct = (added / total * 100) if total > 0 else 0
             mod_pct = (modified / total * 100) if total > 0 else 0
             rem_pct = (removed / total * 100) if total > 0 else 0
             unch_pct = (unchanged / total * 100) if total > 0 else 0
-            
+
             row_data.extend(
                 [
                     type_name,
