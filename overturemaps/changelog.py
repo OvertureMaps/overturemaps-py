@@ -1,0 +1,360 @@
+"""Functions for querying and processing the Overture Maps GERS changelog."""
+
+from __future__ import annotations
+
+import warnings
+
+import duckdb
+
+from .models import BBox, ChangeRecord, ChangeType
+
+# S3 path template for the changelog Parquet files
+CHANGELOG_S3_TEMPLATE = "s3://overturemaps-us-west-2/changelog/{release}/theme={theme}/type={type}/**/*.parquet"
+
+
+def _get_connection() -> duckdb.DuckDBPyConnection:
+    """Create a DuckDB in-memory connection with S3 anonymous access configured."""
+    conn = duckdb.connect()
+    conn.execute("SET s3_region='us-west-2';")
+    conn.execute("SET s3_access_key_id='';")
+    conn.execute("SET s3_secret_access_key='';")
+    conn.execute("SET s3_session_token='';")
+    # Use anonymous access for public bucket
+    try:
+        conn.execute(
+            "CREATE OR REPLACE SECRET anon_s3 (TYPE s3, KEY_ID '', SECRET '', REGION 'us-west-2');"
+        )
+    except Exception:
+        pass
+    return conn
+
+
+def query_changelog_ids(
+    release: str,
+    theme: str,
+    type_: str,
+    bbox: BBox,
+) -> tuple[set[str], set[str], set[str]]:
+    """Query changelog and return classified ID sets directly from DuckDB.
+
+    This is a memory-efficient alternative to query_changelog() + classify_changes().
+    All aggregation happens server-side in DuckDB, returning only the ID sets.
+    This can handle billions of changelog rows without exhausting memory.
+
+    Args:
+        release: Overture release ID (e.g. "2024-11-13.0").
+        theme: Overture theme name (e.g. "buildings").
+        type_: Overture feature type (e.g. "building").
+        bbox: Bounding box to spatially filter changes.
+
+    Returns:
+        Tuple of (ids_to_add, ids_to_modify, ids_to_delete) as sets of feature IDs.
+    """
+    s3_path = CHANGELOG_S3_TEMPLATE.format(release=release, theme=theme, type=type_)
+    conn = _get_connection()
+
+    # Server-side aggregation: group IDs by change_type
+    # This returns only the unique IDs per change type, not full records
+    query = f"""
+        SELECT
+            change_type,
+            LIST(DISTINCT id) as ids
+        FROM read_parquet('{s3_path}', hive_partitioning=true)
+        WHERE
+            bbox.xmin <= {bbox.xmax}
+            AND bbox.xmax >= {bbox.xmin}
+            AND bbox.ymin <= {bbox.ymax}
+            AND bbox.ymax >= {bbox.ymin}
+            AND change_type != 'unchanged'
+        GROUP BY change_type
+    """
+
+    rows = conn.execute(query).fetchall()
+
+    ids_to_add: set[str] = set()
+    ids_to_modify: set[str] = set()
+    ids_to_delete: set[str] = set()
+
+    for change_type, id_list in rows:
+        if change_type == "added":
+            ids_to_add.update(id_list)
+        elif change_type == "data_changed":
+            ids_to_modify.update(id_list)
+        elif change_type == "removed":
+            ids_to_delete.update(id_list)
+
+    return ids_to_add, ids_to_modify, ids_to_delete
+
+
+def query_changelog_ids_multi(
+    release: str,
+    bbox: BBox,
+    theme: str | None = None,
+    type_: str | None = None,
+) -> dict[str, dict[str, tuple[set[str], set[str], set[str]]]]:
+    """Query changelog for one or more themes/types within a bounding box.
+
+    This function queries changelog data and returns ID sets for multiple theme/type
+    combinations when theme or type are not specified.
+
+    Args:
+        release: Overture release ID (e.g. "2024-11-13.0").
+        bbox: Bounding box to spatially filter changes.
+        theme: Overture theme name (optional, defaults to all themes).
+        type_: Overture feature type (optional, defaults to all types in theme).
+
+    Returns:
+        Nested dict: {theme: {type: (ids_to_add, ids_to_modify, ids_to_delete)}}.
+    """
+    from .core import type_theme_map
+
+    results = {}
+
+    # Determine which theme/type combinations to query
+    if theme and type_:
+        # Single theme and type specified
+        themes_types = [(theme, type_)]
+    elif theme:
+        # Theme specified, get all types for that theme
+        types = _get_types_for_theme(theme)
+        themes_types = [(theme, t) for t in types]
+    elif type_:
+        # Type specified, get its theme
+        if type_ not in type_theme_map:
+            raise ValueError(f"Unknown type: {type_}")
+        theme = type_theme_map[type_]
+        themes_types = [(theme, type_)]
+    else:
+        # Neither specified, get all themes and types
+        themes_types = [(type_theme_map[t], t) for t in sorted(type_theme_map.keys())]
+
+    # Query each theme/type combination
+    for theme_name, type_name in themes_types:
+        try:
+            ids_to_add, ids_to_modify, ids_to_delete = query_changelog_ids(
+                release, theme_name, type_name, bbox
+            )
+
+            # Build nested structure
+            if theme_name not in results:
+                results[theme_name] = {}
+            results[theme_name][type_name] = (ids_to_add, ids_to_modify, ids_to_delete)
+        except Exception as e:
+            # If a theme/type combination doesn't have changelog data, skip it
+            if "No files found" in str(e) or "does not exist" in str(e):
+                continue
+            raise
+
+    return results
+
+
+def query_changelog(
+    release: str,
+    theme: str,
+    type_: str,
+    bbox: BBox,
+) -> list[ChangeRecord]:
+    """Query the changelog Parquet files for changes within a bounding box.
+
+    .. deprecated::
+        Use :func:`query_changelog_ids` instead for better memory efficiency.
+        This function loads all records into memory which doesn't scale well
+        for large datasets.
+
+    Args:
+        release: Overture release ID (e.g. "2024-11-13.0").
+        theme: Overture theme name (e.g. "buildings").
+        type_: Overture feature type (e.g. "building").
+        bbox: Bounding box to spatially filter changes.
+
+    Returns:
+        List of ChangeRecord objects matching the spatial filter.
+    """
+    warnings.warn(
+        "query_changelog() loads all records into memory and doesn't scale well. "
+        "Use query_changelog_ids() instead for better memory efficiency.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    s3_path = CHANGELOG_S3_TEMPLATE.format(release=release, theme=theme, type=type_)
+    conn = _get_connection()
+
+    query = f"""
+        SELECT
+            id,
+            change_type,
+            bbox
+        FROM read_parquet('{s3_path}', hive_partitioning=true)
+        WHERE
+            bbox.xmin <= {bbox.xmax}
+            AND bbox.xmax >= {bbox.xmin}
+            AND bbox.ymin <= {bbox.ymax}
+            AND bbox.ymax >= {bbox.ymin}
+    """
+
+    rows = conn.execute(query).fetchall()
+    records = []
+    for row in rows:
+        id_, change_type_str, bbox_struct = row
+        # Map new change_type values to our enum
+        if change_type_str == "added":
+            ct = ChangeType.added
+        elif change_type_str == "removed":
+            ct = ChangeType.deprecated
+        elif change_type_str == "data_changed":
+            ct = ChangeType.modified
+        elif change_type_str == "unchanged":
+            # Skip unchanged records as they don't represent actual changes
+            continue
+        else:
+            # Default fallback
+            ct = ChangeType.modified
+
+        record_bbox = None
+        if bbox_struct is not None:
+            record_bbox = BBox(
+                xmin=float(bbox_struct["xmin"]),
+                ymin=float(bbox_struct["ymin"]),
+                xmax=float(bbox_struct["xmax"]),
+                ymax=float(bbox_struct["ymax"]),
+            )
+
+        records.append(
+            ChangeRecord(
+                id=id_,
+                change_type=ct,
+                successor_ids=[],  # Not available in new format
+                bbox=record_bbox,
+            )
+        )
+    return records
+
+
+def _get_types_for_theme(theme: str) -> list[str]:
+    """Get all feature types for a given theme.
+
+    Args:
+        theme: Overture theme name.
+
+    Returns:
+        List of feature types in the theme.
+    """
+    from .core import type_theme_map
+
+    return [type_ for type_, t in type_theme_map.items() if t == theme]
+
+
+def _get_all_themes() -> list[str]:
+    """Get all unique theme names.
+
+    Returns:
+        List of all unique themes.
+    """
+    from .core import type_theme_map
+
+    return sorted(set(type_theme_map.values()))
+
+
+def summarize_changelog(
+    release: str,
+    theme: str | None = None,
+    type_: str | None = None,
+) -> dict[str, dict[str, dict[str, int]]]:
+    """Return change counts by type for one or more themes without bbox filtering.
+
+    Args:
+        release: Overture release ID.
+        theme: Overture theme name (optional, defaults to all themes).
+        type_: Overture feature type (optional, defaults to all types in theme).
+
+    Returns:
+        Nested dictionary: {theme: {type: {change_type: count}}}.
+        If both theme and type are specified, returns single-entry nested dict.
+    """
+    from .core import type_theme_map
+
+    conn = _get_connection()
+    results = {}
+
+    # Determine which theme/type combinations to query
+    if theme and type_:
+        # Single theme and type specified
+        themes_types = [(theme, type_)]
+    elif theme:
+        # Theme specified, get all types for that theme
+        types = _get_types_for_theme(theme)
+        themes_types = [(theme, t) for t in types]
+    elif type_:
+        # Type specified, get its theme
+        if type_ not in type_theme_map:
+            raise ValueError(f"Unknown type: {type_}")
+        theme = type_theme_map[type_]
+        themes_types = [(theme, type_)]
+    else:
+        # Neither specified, get all themes and types
+        themes_types = [(type_theme_map[t], t) for t in sorted(type_theme_map.keys())]
+
+    # Query each theme/type combination
+    for theme_name, type_name in themes_types:
+        s3_path = CHANGELOG_S3_TEMPLATE.format(
+            release=release, theme=theme_name, type=type_name
+        )
+
+        query = f"""
+            SELECT change_type, COUNT(*) AS cnt
+            FROM read_parquet('{s3_path}', hive_partitioning=true)
+            GROUP BY change_type
+            ORDER BY change_type
+        """
+
+        try:
+            rows = conn.execute(query).fetchall()
+            change_counts = {row[0]: row[1] for row in rows}
+
+            # Build nested structure
+            if theme_name not in results:
+                results[theme_name] = {}
+            results[theme_name][type_name] = change_counts
+        except Exception as e:
+            # If a theme/type combination doesn't have changelog data, skip it
+            if "No files found" in str(e) or "does not exist" in str(e):
+                continue
+            raise
+
+    return results
+
+
+def classify_changes(
+    records: list[ChangeRecord],
+) -> tuple[set[str], set[str], set[str]]:
+    """Classify change records into added, modified, and deprecated ID sets.
+
+    .. deprecated::
+        Use :func:`query_changelog_ids` instead, which performs classification
+        server-side without loading records into memory.
+
+    Args:
+        records: List of ChangeRecord objects from query_changelog.
+
+    Returns:
+        Tuple of (ids_to_add, ids_to_modify, ids_to_delete).
+    """
+    warnings.warn(
+        "classify_changes() is deprecated. Use query_changelog_ids() instead, "
+        "which performs classification server-side without loading records into memory.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    ids_to_add: set[str] = set()
+    ids_to_modify: set[str] = set()
+    ids_to_delete: set[str] = set()
+
+    for record in records:
+        if record.change_type == ChangeType.added:
+            ids_to_add.add(record.id)
+        elif record.change_type == ChangeType.modified:
+            ids_to_modify.add(record.id)
+        elif record.change_type == ChangeType.deprecated:
+            ids_to_delete.add(record.id)
+
+    return ids_to_add, ids_to_modify, ids_to_delete

@@ -203,7 +203,23 @@ def _create_s3_record_batch_reader(
         non_empty_batches = (b for b in batches if b.num_rows > 0)
 
         geoarrow_schema = geoarrow_schema_adapter(dataset.schema)
-        reader = pa.RecordBatchReader.from_batches(geoarrow_schema, non_empty_batches)
+
+        # Apply the geoarrow schema to each batch so metadata is propagated
+        # RecordBatchReader.from_batches() doesn't modify batch schemas,
+        # so we need to explicitly create new batches with the target schema
+        def add_schema_to_batches(batches, target_schema):
+            for batch in batches:
+                yield pa.RecordBatch.from_arrays(
+                    [batch.column(i) for i in range(batch.num_columns)],
+                    schema=target_schema,
+                )
+
+        batches_with_metadata = add_schema_to_batches(
+            non_empty_batches, geoarrow_schema
+        )
+        reader = pa.RecordBatchReader.from_batches(
+            geoarrow_schema, batches_with_metadata
+        )
 
         return reader
 
