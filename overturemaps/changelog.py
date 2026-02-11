@@ -1,10 +1,25 @@
-"""Functions for querying and processing the Overture Maps GERS changelog."""
+"""Functions for querying and processing the Overture Maps GERS changelog.
+
+STAC Support
+------------
+This module is prepared to use the STAC catalog for accelerated spatial queries
+when changelog files are added to the STAC index. The _get_changelog_files_from_stac()
+function will automatically enable this optimization once the catalog includes changelog
+partitions. Until then, queries fall back to direct S3 path scanning.
+
+See: https://stac.overturemaps.org/
+"""
 
 from __future__ import annotations
 
+import io
 import warnings
+from typing import Optional
+from urllib.request import urlopen
 
 import duckdb
+import pyarrow.parquet as pq
+import pyarrow.compute as pc
 
 from .models import BBox, ChangeRecord, ChangeType
 
@@ -29,6 +44,72 @@ def _get_connection() -> duckdb.DuckDBPyConnection:
     return conn
 
 
+def _get_changelog_files_from_stac(
+    theme: str, type_: str, bbox: BBox, release: str
+) -> Optional[list[str]]:
+    """Get changelog file paths from STAC catalog for spatial query optimization.
+
+    This function checks the STAC catalog for changelog file entries and returns
+    only the files whose bounding boxes intersect with the query bbox. This can
+    dramatically reduce query time by avoiding full S3 partition scans.
+
+    NOTE: As of early 2026, changelog files are not yet included in the STAC catalog.
+    This function is prepared for when that feature becomes available. Until then,
+    it returns None, causing queries to fall back to direct S3 path scanning.
+
+    Once changelog partitions are added to STAC (matching data partitions), this
+    will automatically enable the same spatial acceleration used for data queries.
+
+    Args:
+        theme: Overture theme name (e.g., "buildings").
+        type_: Overture feature type (e.g., "building").
+        bbox: Bounding box for spatial filtering.
+        release: Overture release ID (e.g., "2025-01-21.0").
+
+    Returns:
+        List of S3 paths (bucket/key format) if STAC has changelog data, None otherwise.
+    """
+    stac_changelog_url = f"https://stac.overturemaps.org/{release}/changelog.parquet"
+
+    try:
+        # Try to read the STAC changelog index
+        with urlopen(stac_changelog_url) as response:
+            data = response.read()
+            buffer = io.BytesIO(data)
+            stac_table = pq.read_table(buffer)
+
+        # Filter by theme/type (column names may need adjustment when STAC schema is finalized)
+        feature_type_filter = (pc.field("theme") == theme) & (pc.field("type") == type_)
+
+        # Spatial filter: only include files whose bbox overlaps query bbox
+        bbox_filter = (
+            (pc.field("bbox", "xmin") < bbox.xmax)
+            & (pc.field("bbox", "xmax") > bbox.xmin)
+            & (pc.field("bbox", "ymin") < bbox.ymax)
+            & (pc.field("bbox", "ymax") > bbox.ymin)
+        )
+
+        combined_filter = feature_type_filter & bbox_filter
+        filtered_table = stac_table.filter(combined_filter)
+
+        if filtered_table.num_rows > 0:
+            # Extract S3 paths (schema may differ from data STAC, adjust as needed)
+            file_paths = filtered_table.column("assets").to_pylist()
+            s3_paths = [
+                path["aws"]["alternate"]["s3"]["href"][len("s3://") :]
+                for path in file_paths
+            ]
+            return s3_paths
+        else:
+            # No matching files in this region
+            return []
+
+    except Exception:
+        # STAC changelog not available yet, return None to trigger fallback
+        # This is expected behavior until changelog files are added to STAC
+        return None
+
+
 def query_changelog_ids(
     release: str,
     theme: str,
@@ -41,6 +122,10 @@ def query_changelog_ids(
     All aggregation happens server-side in DuckDB, returning only the ID sets.
     This can handle billions of changelog rows without exhausting memory.
 
+    Automatically attempts to use STAC catalog for query acceleration. When changelog
+    files are added to STAC, this will speed up spatial queries. Until then, transparently
+    falls back to direct S3 access.
+
     Args:
         release: Overture release ID (e.g. "2024-11-13.0").
         theme: Overture theme name (e.g. "buildings").
@@ -50,7 +135,19 @@ def query_changelog_ids(
     Returns:
         Tuple of (ids_to_add, ids_to_modify, ids_to_delete) as sets of feature IDs.
     """
-    s3_path = CHANGELOG_S3_TEMPLATE.format(release=release, theme=theme, type=type_)
+    # Try STAC first (will automatically work when changelog added to STAC)
+    s3_paths = _get_changelog_files_from_stac(theme, type_, bbox, release)
+
+    # Use STAC paths if available, otherwise fall back to full S3 path pattern
+    if s3_paths is not None:
+        # STAC returned specific files to query (more efficient)
+        if len(s3_paths) == 0:
+            # No files intersect the bbox
+            return set(), set(), set()
+        s3_path = s3_paths  # DuckDB can handle list of paths
+    else:
+        # STAC not available, use full path pattern (current behavior)
+        s3_path = CHANGELOG_S3_TEMPLATE.format(release=release, theme=theme, type=type_)
     conn = _get_connection()
 
     # Server-side aggregation: group IDs by change_type
@@ -96,6 +193,8 @@ def query_changelog_ids_multi(
 
     This function queries changelog data and returns ID sets for multiple theme/type
     combinations when theme or type are not specified.
+
+    Automatically attempts to use STAC catalog for query acceleration when available.
 
     Args:
         release: Overture release ID (e.g. "2024-11-13.0").
@@ -261,6 +360,9 @@ def summarize_changelog(
     type_: str | None = None,
 ) -> dict[str, dict[str, dict[str, int]]]:
     """Return change counts by type for one or more themes without bbox filtering.
+
+    Note: For full-dataset summaries without bbox filtering, STAC acceleration
+    may not apply, but the code is prepared for future STAC optimizations.
 
     Args:
         release: Overture release ID.

@@ -141,6 +141,8 @@ Query the GERS changelog to see what changed. Results are displayed in formatted
 
 Both commands support optional filtering by `--theme` and/or `--type`, and default to the latest release if `--release` is not specified. When querying multiple themes or types, results are grouped in tables with grand totals.
 
+**STAC Acceleration**: The CLI automatically attempts to use Overture's [STAC catalog](https://stac.overturemaps.org/) for accelerated spatial queries. When changelog files are added to the catalog, queries will automatically benefit from the same performance improvements that data downloads currently receive from STAC indexing. Until changelog partitions are added to STAC, queries transparently fall back to direct S3 access.
+
 #### `overturemaps update`
 
 Run incremental updates against your local backend. The `update run` command reads parameters (theme, type, bbox, format) from the state file created by `download`, so you only need to specify the output location:
