@@ -322,11 +322,15 @@ def test_changelog_query_summary(mock_summarize):
     """changelog summary shows counts by change type."""
     from overturemaps.models import ChangeType
 
-    # Return count dict by change type
+    # Return nested dict matching new summarize_changelog format: {theme: {type: {change_type: count}}}
     mock_summarize.return_value = {
-        ChangeType.added: 10,
-        ChangeType.modified: 5,
-        ChangeType.deprecated: 3,
+        "buildings": {
+            "building": {
+                ChangeType.added: 10,
+                ChangeType.modified: 5,
+                ChangeType.deprecated: 3,
+            }
+        }
     }
 
     result = runner.invoke(
