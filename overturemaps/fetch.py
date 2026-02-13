@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import duckdb
 import geopandas as gpd
 import pandas as pd
@@ -34,6 +36,11 @@ def _get_connection() -> duckdb.DuckDBPyConnection:
     return conn
 
 
+def _decode_wkb(value: Any) -> Any:
+    """Decode a WKB value into a Shapely geometry."""
+    return wkb.loads(bytes(value)) if value is not None else None
+
+
 def _rows_to_geodataframe(rows: list, columns: list[str]) -> gpd.GeoDataFrame:
     """Convert DuckDB result rows into a GeoDataFrame.
 
@@ -51,9 +58,8 @@ def _rows_to_geodataframe(rows: list, columns: list[str]) -> gpd.GeoDataFrame:
         return gpd.GeoDataFrame(df, geometry=gpd.GeoSeries([], crs="EPSG:4326"))
 
     if "geometry" in df.columns:
-        df["geometry"] = df["geometry"].apply(
-            lambda g: wkb.loads(bytes(g)) if g is not None else None
-        )
+        geometry_series = cast(pd.Series, df["geometry"])
+        df["geometry"] = geometry_series.map(_decode_wkb)
         gdf = gpd.GeoDataFrame(df, geometry="geometry", crs="EPSG:4326")
     else:
         gdf = gpd.GeoDataFrame(df)

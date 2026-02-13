@@ -1036,7 +1036,7 @@ def update_run(theme, type_, bbox, output_format, output, db_url, release, dry_r
 
     # Get backend instance
     backend_instance = _resolve_backend(
-        Backend(output_format), Path(output) if output else None, db_url
+        backend, Path(output) if output else None, db_url
     )
 
     # Query changelog with spinner
@@ -1106,7 +1106,7 @@ def update_run(theme, type_, bbox, output_format, output, db_url, release, dry_r
         theme=theme,
         type=type_,
         bbox=area,
-        backend=Backend(output_format),
+        backend=backend,
         output=str(output) if output else db_url,
     )
     save_state(new_state, state_path)

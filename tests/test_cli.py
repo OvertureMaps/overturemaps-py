@@ -182,6 +182,7 @@ def test_download_streaming_to_stdout(mock_reader):
     )
 
     # Should succeed even with no bbox (will try to download everything)
+    assert result.exit_code == 0
     assert mock_reader.called
 
 
@@ -311,7 +312,6 @@ def test_update_run_dry_run(mock_query, mock_latest, temp_dir):
 def test_update_run_already_up_to_date(mock_load, mock_latest, temp_dir):
     """update run exits early when already at target release."""
     output_file = temp_dir / "buildings.parquet"
-    state_file = temp_dir / "buildings.parquet.state"
 
     # Mock latest release
     mock_latest.return_value = "2024-11-13.0"
@@ -357,7 +357,6 @@ def test_update_run_already_up_to_date(mock_load, mock_latest, temp_dir):
 @patch("overturemaps.changelog.summarize_changelog")
 def test_changelog_query_summary(mock_summarize):
     """changelog summary shows counts by change type."""
-    from overturemaps.models import ChangeType
 
     # Return nested dict matching new summarize_changelog format: {theme: {type: {change_type: count}}}
     mock_summarize.return_value = {
