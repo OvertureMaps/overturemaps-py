@@ -144,9 +144,9 @@ class PostGISBackend(BaseBackend):
         ]
 
         # Map pandas dtypes to PostgreSQL types
-        def infer_pg_type(dtype) -> str:
-            """Infer PostgreSQL column type from pandas dtype."""
-            dtype_str = str(dtype)
+        def infer_pg_type(series) -> str:
+            """Infer PostgreSQL column type from pandas Series."""
+            dtype_str = str(series.dtype)
             if dtype_str.startswith("int"):
                 return "BIGINT"
             elif dtype_str.startswith("float"):
@@ -154,8 +154,13 @@ class PostGISBackend(BaseBackend):
             elif dtype_str == "bool":
                 return "BOOLEAN"
             elif dtype_str == "object":
-                # Could be string, list, dict, etc. - use JSONB for flexibility
-                return "JSONB"
+                # Check actual values to distinguish structured data from strings
+                # Use JSONB only if we find dict/list values
+                for val in series.dropna():
+                    if isinstance(val, (dict, list)):
+                        return "JSONB"
+                # All values are strings (or empty) - use TEXT
+                return "TEXT"
             else:
                 # Fallback to TEXT for unknown types
                 return "TEXT"
@@ -164,7 +169,7 @@ class PostGISBackend(BaseBackend):
         with self._engine.begin() as conn:
             for col in extra_cols:
                 try:
-                    pg_type = infer_pg_type(features[col].dtype)
+                    pg_type = infer_pg_type(features[col])
                     # Use SQLAlchemy's text() with identifier quoting
                     conn.execute(
                         text(

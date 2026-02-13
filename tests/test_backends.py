@@ -244,3 +244,50 @@ def test_postgis_count_query(mock_create_engine):
 
     executed = _extract_sql_texts(mock_select_conn)
     assert any("COUNT" in s for s in executed)
+
+
+@patch("overturemaps.backends.postgis.create_engine")
+def test_postgis_upsert_infers_column_types(mock_create_engine):
+    """PostGISBackend.upsert infers correct PostgreSQL types for mixed columns."""
+    from overturemaps.backends.postgis import PostGISBackend
+
+    mock_engine = MagicMock()
+    mock_create_engine.return_value = mock_engine
+
+    mock_begin_conn = MagicMock()
+    mock_engine.begin.return_value.__enter__ = MagicMock(return_value=mock_begin_conn)
+    mock_engine.begin.return_value.__exit__ = MagicMock(return_value=False)
+
+    backend = PostGISBackend("postgresql://localhost/test", "features")
+    mock_begin_conn.execute.reset_mock()
+
+    # Create DataFrame with mixed column types
+    gdf = gpd.GeoDataFrame(
+        {
+            "id": ["test1"],
+            "theme": ["buildings"],  # Plain string -> TEXT
+            "version": [1],  # Int -> BIGINT
+            "height": [10.5],  # Float -> DOUBLE PRECISION
+            "metadata": [{"key": "value"}],  # Dict -> JSONB
+            "tags": [["tag1", "tag2"]],  # List -> JSONB
+        },
+        geometry=[Point(0, 0)],
+        crs="EPSG:4326",
+    )
+
+    backend.upsert(gdf)
+
+    # Check ALTER TABLE statements
+    executed_sqls = _extract_sql_texts(mock_begin_conn)
+    combined = " ".join(executed_sqls)
+
+    # String column should be TEXT, not JSONB
+    assert 'ADD COLUMN IF NOT EXISTS "theme" TEXT' in combined
+    # Int should be BIGINT
+    assert 'ADD COLUMN IF NOT EXISTS "version" BIGINT' in combined
+    # Float should be DOUBLE PRECISION
+    assert 'ADD COLUMN IF NOT EXISTS "height" DOUBLE PRECISION' in combined
+    # Dict should be JSONB
+    assert 'ADD COLUMN IF NOT EXISTS "metadata" JSONB' in combined
+    # List should be JSONB
+    assert 'ADD COLUMN IF NOT EXISTS "tags" JSONB' in combined
