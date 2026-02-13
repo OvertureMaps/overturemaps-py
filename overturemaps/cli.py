@@ -1035,14 +1035,13 @@ def update_run(theme, type_, bbox, output_format, output, db_url, release, dry_r
 
     console.print(f"[bold blue]Updating to release {release}[/bold blue] …")
 
-    # Get backend instance to check current state
+    # Get backend instance
     backend_instance = _resolve_backend(
         Backend(output_format), Path(output) if output else None, db_url
     )
-    existing_ids = backend_instance.get_all_ids()
 
     # Query changelog with spinner
-    with console.status(f"[bold blue]Querying changelog...", spinner="dots"):
+    with console.status("[bold blue]Querying changelog...", spinner="dots"):
         try:
             ids_to_add, ids_to_modify, ids_to_delete = query_changelog_ids(
                 release, theme, type_, area
@@ -1052,6 +1051,10 @@ def update_run(theme, type_, bbox, output_format, output, db_url, release, dry_r
             sys.exit(1)
 
     # Analyze changelog accuracy
+    with console.status("[bold blue]Checking backend state...", spinner="dots"):
+        ids_to_check = ids_to_delete | ids_to_add
+        existing_ids = backend_instance.check_existing_ids(ids_to_check)
+
     false_positive_removes = ids_to_delete - existing_ids
     false_positive_adds = ids_to_add & existing_ids
 

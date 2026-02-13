@@ -204,3 +204,24 @@ class GeoJSONBackend(BaseBackend):
         if gdf.empty:
             return set()
         return set(gdf["id"].tolist())
+
+    def check_existing_ids(self, ids: set[str]) -> set[str]:
+        """Check which IDs from the given set exist in the store.
+
+        For GeoJSON files, this still requires reading the full file.
+
+        Args:
+            ids: Set of feature IDs to check.
+
+        Returns:
+            Subset of input IDs that exist in the store.
+        """
+        if not ids:
+            return set()
+
+        gdf = self._read()
+        if gdf.empty:
+            return set()
+
+        stored_ids = set(gdf["id"].tolist())
+        return ids & stored_ids

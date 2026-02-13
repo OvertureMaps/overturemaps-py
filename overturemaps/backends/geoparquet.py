@@ -171,3 +171,30 @@ class GeoParquetBackend(BaseBackend):
         if gdf.empty:
             return set()
         return set(gdf["id"].tolist())
+
+    def check_existing_ids(self, ids: set[str]) -> set[str]:
+        """Check which IDs from the given set exist in the store.
+
+        Reads only the 'id' column from the parquet file for efficiency.
+
+        Args:
+            ids: Set of feature IDs to check.
+
+        Returns:
+            Subset of input IDs that exist in the store.
+        """
+        if not ids or not self.path.exists():
+            return set()
+
+        # Read only the 'id' column for efficiency
+        try:
+            table = pq.read_table(self.path, columns=["id"])
+            stored_ids = set(table.column("id").to_pylist())
+            return ids & stored_ids
+        except Exception:
+            # Fall back to reading full file if column read fails
+            gdf = self._read()
+            if gdf.empty:
+                return set()
+            stored_ids = set(gdf["id"].tolist())
+            return ids & stored_ids

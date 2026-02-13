@@ -244,3 +244,36 @@ class PostGISBackend(BaseBackend):
         with self._engine.connect() as conn:
             result = conn.execute(text(f"SELECT id FROM {self._qualified_table};"))
             return {row[0] for row in result}
+
+    def check_existing_ids(self, ids: set[str]) -> set[str]:
+        """Check which IDs from the given set exist in the store.
+
+        Uses a WHERE IN query to efficiently check only the specified IDs.
+
+        Args:
+            ids: Set of feature IDs to check.
+
+        Returns:
+            Subset of input IDs that exist in the store.
+        """
+        if not ids:
+            return set()
+
+        # Split into batches to avoid SQL query size limits
+        batch_size = 1000
+        ids_list = list(ids)
+        existing = set()
+
+        for i in range(0, len(ids_list), batch_size):
+            batch = ids_list[i : i + batch_size]
+            id_list_str = ", ".join(f"'{id_}'" for id_ in batch)
+
+            with self._engine.connect() as conn:
+                result = conn.execute(
+                    text(
+                        f"SELECT id FROM {self._qualified_table} WHERE id IN ({id_list_str});"
+                    )
+                )
+                existing.update(row[0] for row in result)
+
+        return existing

@@ -82,3 +82,18 @@ class BaseBackend(ABC):
             Set of all feature IDs.
         """
         ...
+
+    @abstractmethod
+    def check_existing_ids(self, ids: set[str]) -> set[str]:
+        """Check which IDs from the given set exist in the store.
+
+        This is more efficient than get_all_ids() when checking specific IDs,
+        especially for large backends like PostGIS.
+
+        Args:
+            ids: Set of feature IDs to check.
+
+        Returns:
+            Subset of input IDs that exist in the store.
+        """
+        ...
