@@ -144,10 +144,15 @@ def query_changelog_ids(
         if len(s3_paths) == 0:
             # No files intersect the bbox
             return set(), set(), set()
-        s3_path = s3_paths  # DuckDB can handle list of paths
+        # Format as SQL array for DuckDB
+        paths_sql = "[" + ", ".join(f"'s3://{path}'" for path in s3_paths) + "]"
     else:
         # STAC not available, use full path pattern (current behavior)
-        s3_path = CHANGELOG_S3_TEMPLATE.format(release=release, theme=theme, type=type_)
+        s3_path_str = CHANGELOG_S3_TEMPLATE.format(
+            release=release, theme=theme, type=type_
+        )
+        paths_sql = f"'{s3_path_str}'"
+
     conn = _get_connection()
 
     # Server-side aggregation: group IDs by change_type
@@ -156,7 +161,7 @@ def query_changelog_ids(
         SELECT
             change_type,
             LIST(DISTINCT id) as ids
-        FROM read_parquet('{s3_path}', hive_partitioning=true)
+        FROM read_parquet({paths_sql}, hive_partitioning=true)
         WHERE
             bbox.xmin <= {bbox.xmax}
             AND bbox.xmax >= {bbox.xmin}

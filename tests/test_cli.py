@@ -21,24 +21,31 @@ runner = CliRunner()
 # ---------------------------------------------------------------------------
 
 
-def test_releases_latest():
-    """releases latest prints the most recent release from STAC catalog."""
+@patch("overturemaps.releases.get_latest_release")
+def test_releases_latest(mock_latest):
+    """releases latest prints the most recent release."""
+    mock_latest.return_value = "2024-11-13.0"
+
     result = runner.invoke(cli, ["releases", "latest"])
     assert result.exit_code == 0
-    # Should print a release version (format: YYYY-MM-DD.N)
-    assert result.output.strip()  # Non-empty output
-    # Basic format check - should look like a date-based version
-    parts = result.output.strip().split("-")
-    assert len(parts) >= 3  # Year-Month-Day or more
+    assert result.output.strip() == "2024-11-13.0"
+    mock_latest.assert_called_once()
 
 
-def test_releases_list():
+@patch("overturemaps.releases.list_releases")
+def test_releases_list(mock_list):
     """releases list prints available releases."""
+    mock_list.return_value = ["2024-11-13.0", "2024-10-23.0", "2024-09-18.0"]
+
     result = runner.invoke(cli, ["releases", "list"])
     assert result.exit_code == 0
-    # Should print multiple releases
+
     lines = result.output.strip().split("\n")
-    assert len(lines) >= 1  # At least one release
+    assert len(lines) == 3
+    assert "2024-11-13.0" in lines[0]
+    assert "2024-10-23.0" in lines[1]
+    assert "2024-09-18.0" in lines[2]
+    mock_list.assert_called_once()
 
 
 def test_releases_check_requires_output():
@@ -48,12 +55,16 @@ def test_releases_check_requires_output():
     assert "Must specify either --output or --db-url" in result.output
 
 
-def test_releases_check_with_output(temp_dir):
-    """releases check with --output checks the corresponding state file."""
+@patch("overturemaps.releases.get_latest_release")
+def test_releases_check_up_to_date(mock_latest, temp_dir):
+    """releases check reports up to date when state matches latest release."""
     output_file = temp_dir / "test.parquet"
     state_file = temp_dir / "test.parquet.state"
 
-    # Create a state file
+    # Mock latest release to match state
+    mock_latest.return_value = "2024-01-01.0"
+
+    # Create a state file at the latest release
     state_data = {
         "last_release": "2024-01-01.0",
         "last_run": "2024-01-02T00:00:00Z",
@@ -66,8 +77,34 @@ def test_releases_check_with_output(temp_dir):
     state_file.write_text(json.dumps(state_data))
 
     result = runner.invoke(cli, ["releases", "check", "-o", str(output_file)])
-    # Should check if update is available (will vary based on actual latest release)
-    assert result.exit_code in [0, 1]  # 0 = up to date, 1 = update available
+    assert result.exit_code == 0
+    assert "Up to date (release 2024-01-01.0)" in result.output
+
+
+@patch("overturemaps.releases.get_latest_release")
+def test_releases_check_update_available(mock_latest, temp_dir):
+    """releases check reports update available when newer release exists."""
+    output_file = temp_dir / "test.parquet"
+    state_file = temp_dir / "test.parquet.state"
+
+    # Mock latest release to be newer than state
+    mock_latest.return_value = "2024-02-01.0"
+
+    # Create a state file at an older release
+    state_data = {
+        "last_release": "2024-01-01.0",
+        "last_run": "2024-01-02T00:00:00Z",
+        "theme": "buildings",
+        "type": "building",
+        "bbox": {"xmin": -97.8, "ymin": 30.2, "xmax": -97.6, "ymax": 30.4},
+        "backend": "geoparquet",
+        "output": str(output_file),
+    }
+    state_file.write_text(json.dumps(state_data))
+
+    result = runner.invoke(cli, ["releases", "check", "-o", str(output_file)])
+    assert result.exit_code == 1
+    assert "Update available: 2024-01-01.0 → 2024-02-01.0" in result.output
 
 
 def test_releases_check_no_state_file(temp_dir):
@@ -222,7 +259,7 @@ def test_download_geojsonseq_streaming(mock_write, mock_reader, temp_dir):
 # ---------------------------------------------------------------------------
 
 
-@patch("overturemaps.cli.get_latest_release")
+@patch("overturemaps.releases.get_latest_release")
 @patch("overturemaps.changelog.query_changelog_ids")
 def test_update_run_dry_run(mock_query, mock_latest, temp_dir):
     """update run --dry-run shows changes without applying."""
@@ -411,17 +448,16 @@ def test_state_file_location_geoparquet(temp_dir):
 
 
 def test_state_file_location_postgis():
-    """State file for postgis uses hash of db_url."""
+    """State file for postgis returns the db_url (state stored in database)."""
     from overturemaps.state import get_state_file_for_backend
     from overturemaps.models import Backend
 
     db_url = "postgresql://user:pass@localhost/db"
-    state_path = get_state_file_for_backend(Backend.postgis, None, db_url)
+    state_location = get_state_file_for_backend(Backend.postgis, None, db_url)
 
-    # Should be in ~/.overture/postgis/ directory
-    assert "postgis" in str(state_path)
-    assert "state_" in state_path.name
-    assert state_path.suffix == ".json"
+    # Should return the db_url string (state is stored in the database)
+    assert state_location == db_url
+    assert isinstance(state_location, str)
 
 
 def test_state_file_location_requires_params():

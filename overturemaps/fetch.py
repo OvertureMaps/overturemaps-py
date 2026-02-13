@@ -27,6 +27,9 @@ def _get_connection() -> duckdb.DuckDBPyConnection:
             "CREATE OR REPLACE SECRET anon_s3 (TYPE s3, KEY_ID '', SECRET '', REGION 'us-west-2');"
         )
     except Exception:
+        # Some DuckDB versions or configurations may not support SECRETs; the
+        # connection is still usable with the S3 settings above, so we can safely
+        # ignore failures when creating this optional secret.
         pass
     return conn
 

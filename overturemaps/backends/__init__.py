@@ -13,5 +13,3 @@ __all__ = [
     "GeoParquetBackend",
     "PostGISBackend",
 ]
-
-__all__ = ["BaseBackend", "GeoParquetBackend", "PostGISBackend"]

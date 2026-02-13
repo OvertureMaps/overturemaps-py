@@ -544,7 +544,7 @@ def releases_check(output_format, output, db_url):
         elif output:
             # Try to infer from extension
             ext = Path(output).suffix.lower()
-            if ext == ".parquet":
+            if ext in (".parquet", ".geoparquet"):
                 output_format = "geoparquet"
             elif ext == ".geojson":
                 output_format = "geojson"
@@ -649,7 +649,6 @@ def changelog_query(release, theme, type_, bbox, output):
             sys.exit(1)
 
     if output:
-        import json
         from pathlib import Path
 
         # Flatten results for output
@@ -1153,7 +1152,7 @@ def update_status(output_format, output, db_url):
         elif output:
             # Try to infer from extension
             ext = Path(output).suffix.lower()
-            if ext == ".parquet":
+            if ext in (".parquet", ".geoparquet"):
                 output_format = "geoparquet"
             elif ext == ".geojson":
                 output_format = "geojson"

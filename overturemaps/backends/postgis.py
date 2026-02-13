@@ -120,22 +120,6 @@ class PostGISBackend(BaseBackend):
         except Exception as e:
             raise RuntimeError(f"Error writing to PostGIS: {e}") from e
 
-    @property
-    def _qualified_table(self) -> str:
-        return f"{self.schema}.{self.table}"
-
-    def _ensure_table(self) -> None:
-        """Create the table with geometry column if it does not exist."""
-        sql = f"""
-            CREATE TABLE IF NOT EXISTS {self._qualified_table} (
-                id TEXT PRIMARY KEY,
-                geometry GEOMETRY(Geometry, 4326)
-            )
-        """
-        with self._engine.begin() as conn:
-            conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis;"))
-            conn.execute(text(sql))
-
     def upsert(self, features: gpd.GeoDataFrame) -> None:
         """Insert or update features using INSERT ... ON CONFLICT DO UPDATE.
 
@@ -148,49 +132,101 @@ class PostGISBackend(BaseBackend):
         if features.empty:
             return
 
+        # Validate and filter column names to prevent SQL injection
+        def is_valid_column_name(name: str) -> bool:
+            """Check if column name is safe (alphanumeric and underscore only)."""
+            return name.replace("_", "").replace(".", "").isalnum()
+
+        extra_cols = [
+            c
+            for c in features.columns
+            if c not in ("id", "geometry") and is_valid_column_name(c)
+        ]
+
+        # Map pandas dtypes to PostgreSQL types
+        def infer_pg_type(dtype) -> str:
+            """Infer PostgreSQL column type from pandas dtype."""
+            dtype_str = str(dtype)
+            if dtype_str.startswith("int"):
+                return "BIGINT"
+            elif dtype_str.startswith("float"):
+                return "DOUBLE PRECISION"
+            elif dtype_str == "bool":
+                return "BOOLEAN"
+            elif dtype_str == "object":
+                # Could be string, list, dict, etc. - use JSONB for flexibility
+                return "JSONB"
+            else:
+                # Fallback to TEXT for unknown types
+                return "TEXT"
+
         # Ensure any new non-spatial columns exist in the table
-        extra_cols = [c for c in features.columns if c not in ("id", "geometry")]
         with self._engine.begin() as conn:
             for col in extra_cols:
                 try:
+                    pg_type = infer_pg_type(features[col].dtype)
+                    # Use SQLAlchemy's text() with identifier quoting
                     conn.execute(
                         text(
                             f"ALTER TABLE {self._qualified_table} "
-                            f"ADD COLUMN IF NOT EXISTS {col} TEXT;"
+                            f'ADD COLUMN IF NOT EXISTS "{col}" {pg_type};'
                         )
                     )
                 except Exception:
                     pass  # Column may already exist or be unsupported
 
-        # Use GeoDataFrame.to_postgis with if_exists='append', then deduplicate
-        # For a proper upsert we build explicit SQL
+        # Build parameterized INSERT ... ON CONFLICT query
+        # Create placeholders for VALUES clause
+        value_placeholders = [":id", "ST_GeomFromText(:geom_wkt, 4326)"]
+        value_placeholders.extend(f":{col}" for col in extra_cols)
+
+        # Build UPDATE SET clause for ON CONFLICT
+        update_set = ["geometry = EXCLUDED.geometry"]
+        update_set.extend(f'"{col}" = EXCLUDED."{col}"' for col in extra_cols)
+
+        # Construct SQL with quoted identifiers
+        quoted_cols = ['"id"', '"geometry"'] + [f'"{col}"' for col in extra_cols]
+        sql = (
+            f"INSERT INTO {self._qualified_table} ({', '.join(quoted_cols)}) "
+            f"VALUES ({', '.join(value_placeholders)}) "
+            f"ON CONFLICT (id) DO UPDATE SET {', '.join(update_set)};"
+        )
+
+        # Prepare batch of parameters
+        params_batch = []
+        for _, row in features.iterrows():
+            params = {"id": row["id"]}
+
+            # Handle geometry - convert to WKT or use None
+            if row.get("geometry") is not None:
+                params["geom_wkt"] = row["geometry"].wkt
+            else:
+                params["geom_wkt"] = None
+
+            # Add extra column values
+            for col in extra_cols:
+                val = row.get(col)
+                # Handle None values
+                if val is None or (isinstance(val, float) and val != val):  # NaN check
+                    params[col] = None
+                # Convert lists/dicts to JSON string for JSONB columns
+                elif isinstance(val, (list, dict)):
+                    import json
+
+                    params[col] = json.dumps(val)
+                else:
+                    params[col] = val
+
+            params_batch.append(params)
+
+        # Execute batch upsert - use executemany for better performance
         with self._engine.begin() as conn:
-            for _, row in features.iterrows():
-                col_names = ["id", "geometry"] + extra_cols
-                placeholders = [f"'{row['id']}'"]
-                geom_wkt = (
-                    row["geometry"].wkt if row.get("geometry") is not None else "NULL"
-                )
-                placeholders.append(f"ST_GeomFromText('{geom_wkt}', 4326)")
-                for col in extra_cols:
-                    val = row.get(col)
-                    if val is None:
-                        placeholders.append("NULL")
-                    else:
-                        escaped = str(val).replace("'", "''")
-                        placeholders.append(f"'{escaped}'")
-
-                update_set = ", ".join(
-                    ["geometry = EXCLUDED.geometry"]
-                    + [f"{c} = EXCLUDED.{c}" for c in extra_cols]
-                )
-
-                sql = (
-                    f"INSERT INTO {self._qualified_table} ({', '.join(col_names)}) "
-                    f"VALUES ({', '.join(placeholders)}) "
-                    f"ON CONFLICT (id) DO UPDATE SET {update_set};"
-                )
-                conn.execute(text(sql))
+            # Note: SQLAlchemy's executemany with text() requires multiple execute calls
+            # For true batch performance, we'd need to use Core Insert with bindparam
+            # But this is still much better than the previous version
+            stmt = text(sql)
+            for params in params_batch:
+                conn.execute(stmt, params)
 
     def delete(self, ids: set[str]) -> None:
         """Remove features by ID.
@@ -200,10 +236,11 @@ class PostGISBackend(BaseBackend):
         """
         if not ids:
             return
-        id_list = ", ".join(f"'{i}'" for i in ids)
+        # Use parameterized query with ANY() to avoid SQL injection and query length limits
         with self._engine.begin() as conn:
             conn.execute(
-                text(f"DELETE FROM {self._qualified_table} WHERE id IN ({id_list});")
+                text(f"DELETE FROM {self._qualified_table} WHERE id = ANY(:ids);"),
+                {"ids": list(ids)},
             )
 
     def count(self) -> int:
@@ -248,7 +285,7 @@ class PostGISBackend(BaseBackend):
     def check_existing_ids(self, ids: set[str]) -> set[str]:
         """Check which IDs from the given set exist in the store.
 
-        Uses a WHERE IN query to efficiently check only the specified IDs.
+        Uses a parameterized query with ANY() to efficiently and safely check IDs.
 
         Args:
             ids: Set of feature IDs to check.
@@ -259,21 +296,10 @@ class PostGISBackend(BaseBackend):
         if not ids:
             return set()
 
-        # Split into batches to avoid SQL query size limits
-        batch_size = 1000
-        ids_list = list(ids)
-        existing = set()
-
-        for i in range(0, len(ids_list), batch_size):
-            batch = ids_list[i : i + batch_size]
-            id_list_str = ", ".join(f"'{id_}'" for id_ in batch)
-
-            with self._engine.connect() as conn:
-                result = conn.execute(
-                    text(
-                        f"SELECT id FROM {self._qualified_table} WHERE id IN ({id_list_str});"
-                    )
-                )
-                existing.update(row[0] for row in result)
-
-        return existing
+        # Use parameterized query with ANY() - PostgreSQL handles large arrays efficiently
+        with self._engine.connect() as conn:
+            result = conn.execute(
+                text(f"SELECT id FROM {self._qualified_table} WHERE id = ANY(:ids);"),
+                {"ids": list(ids)},
+            )
+            return {row[0] for row in result}

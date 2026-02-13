@@ -189,7 +189,7 @@ def test_postgis_ensures_table_on_init(mock_create_engine):
 
 @patch("overturemaps.backends.postgis.create_engine")
 def test_postgis_delete_sends_correct_sql(mock_create_engine):
-    """PostGISBackend.delete builds a DELETE WHERE id IN (...) statement."""
+    """PostGISBackend.delete builds a parameterized DELETE WHERE id = ANY(:ids) statement."""
     from overturemaps.backends.postgis import PostGISBackend
 
     mock_engine = MagicMock()
@@ -204,10 +204,17 @@ def test_postgis_delete_sends_correct_sql(mock_create_engine):
 
     backend.delete({"id_1", "id_2"})
 
+    # Verify parameterized query with ANY(:ids)
     executed_sqls = _extract_sql_texts(mock_conn)
     combined = " ".join(executed_sqls)
     assert "DELETE" in combined
-    assert "id_1" in combined or "id_2" in combined
+    assert "ANY(:ids)" in combined
+
+    # Verify the IDs were passed as parameters
+    call_args = mock_conn.execute.call_args_list[-1]
+    params = call_args[0][1] if len(call_args[0]) > 1 else call_args[1]
+    assert "ids" in params
+    assert set(params["ids"]) == {"id_1", "id_2"}
 
 
 @patch("overturemaps.backends.postgis.create_engine")
