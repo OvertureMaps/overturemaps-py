@@ -184,13 +184,13 @@ def download(
     if output is not None and bbox is not None:
         # Determine backend from output format
         backend = Backend(output_format)
-        
+
         # Get theme from type
         theme = type_theme_map.get(type_)
         if theme is None:
             click.echo(f"Warning: Could not determine theme for type {type_}", err=True)
             return
-        
+
         # Create and save state
         state = PipelineState(
             last_release=release,
@@ -201,7 +201,7 @@ def download(
             backend=backend,
             output=output,
         )
-        
+
         state_path = get_state_path(output)
         save_state(state, state_path)
         click.echo(f"State saved to {state_path}", err=True)
@@ -391,17 +391,17 @@ def releases_check(output):
     """Check if a local file is up to date with the latest release."""
     state_path = get_state_path(output)
     state = load_state(state_path)
-    
+
     if state is None:
         click.echo(f"No state file found at {state_path}", err=True)
         click.echo("Cannot determine current release version.", err=True)
         sys.exit(1)
-    
+
     latest = get_latest_release()
-    
+
     click.echo(f"Current release: {state.last_release}")
     click.echo(f"Latest release:  {latest}")
-    
+
     if state.last_release == latest:
         click.echo("✓ Up to date")
         sys.exit(0)
