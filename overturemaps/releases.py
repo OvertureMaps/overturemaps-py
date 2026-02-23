@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .core import get_available_releases
+from .core import get_available_releases as _get_available_releases_from_stac
 
 
 def list_releases() -> list[str]:
@@ -13,9 +13,26 @@ def list_releases() -> list[str]:
     Returns:
         Sorted list of release IDs (e.g. ["2024-11-13.0", "2024-10-23.0", ...]).
     """
-    releases, _ = get_available_releases()
+    releases, _ = _get_available_releases_from_stac()
     # Sort descending so newest is first
     return sorted(releases, reverse=True)
+
+
+def get_latest_release() -> str:
+    """Return the ID of the most recent Overture Maps release.
+
+    Uses the STAC catalog for efficient retrieval.
+
+    Returns:
+        Latest release ID string.
+
+    Raises:
+        RuntimeError: If no releases are found.
+    """
+    releases, latest = _get_available_releases_from_stac()
+    if not latest and not releases:
+        raise RuntimeError("No Overture Maps releases found.")
+    return latest or releases[0]
 
 
 def release_exists(release: str) -> bool:
@@ -30,7 +47,8 @@ def release_exists(release: str) -> bool:
         True if the release exists, False otherwise.
     """
     try:
-        return release in list_releases()
+        releases, _ = _get_available_releases_from_stac()
+        return release in releases
     except Exception:
         return False
 
