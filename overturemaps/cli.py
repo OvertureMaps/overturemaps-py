@@ -23,6 +23,7 @@ from .core import (
     record_batch_reader,
     record_batch_reader_from_gers,
 )
+from .releases import list_releases
 
 
 def get_writer(output_format, path, schema):
@@ -326,6 +327,30 @@ class GeoJSONWriter(BaseGeoJSONWriter):
 
     def finalize(self):
         self.writer.write("]}")
+
+
+@cli.group()
+def releases():
+    """Manage and query Overture Maps releases."""
+    pass
+
+
+@releases.command(name="list")
+def releases_list():
+    """List all available Overture Maps releases."""
+    all_releases = list_releases()
+    if not all_releases:
+        click.echo("No releases found.", err=True)
+        return
+    for release in all_releases:
+        click.echo(release)
+
+
+@releases.command(name="latest")
+def releases_latest():
+    """Show the latest Overture Maps release."""
+    latest = get_latest_release()
+    click.echo(latest)
 
 
 if __name__ == "__main__":
