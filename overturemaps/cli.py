@@ -22,7 +22,12 @@ from .core import (
     get_latest_release,
     record_batch_reader,
     record_batch_reader_from_gers,
+    type_theme_map,
 )
+from .releases import list_releases
+from .models import BBox, Backend, PipelineState
+from .state import get_state_path, save_state, load_state
+from datetime import datetime, timezone
 
 
 def get_writer(output_format, path, schema):
@@ -161,7 +166,9 @@ def download(
         )
 
     if output is None:
-        output = sys.stdout
+        output_file = sys.stdout
+    else:
+        output_file = output
 
     reader = record_batch_reader(
         type_, bbox, release, connect_timeout, request_timeout, stac
@@ -170,8 +177,34 @@ def download(
     if reader is None:
         return
 
-    with get_writer(output_format, output, schema=reader.schema) as writer:
+    with get_writer(output_format, output_file, schema=reader.schema) as writer:
         copy(reader, writer)
+
+    # Save state file if output was written to a file
+    if output is not None and bbox is not None:
+        # Determine backend from output format
+        backend = Backend(output_format)
+        
+        # Get theme from type
+        theme = type_theme_map.get(type_)
+        if theme is None:
+            click.echo(f"Warning: Could not determine theme for type {type_}", err=True)
+            return
+        
+        # Create and save state
+        state = PipelineState(
+            last_release=release,
+            last_run=datetime.now(timezone.utc).isoformat(),
+            theme=theme,
+            type=type_,
+            bbox=BBox(xmin=bbox[0], ymin=bbox[1], xmax=bbox[2], ymax=bbox[3]),
+            backend=backend,
+            output=output,
+        )
+        
+        state_path = get_state_path(output)
+        save_state(state, state_path)
+        click.echo(f"State saved to {state_path}", err=True)
 
 
 @cli.command()
@@ -326,6 +359,55 @@ class GeoJSONWriter(BaseGeoJSONWriter):
 
     def finalize(self):
         self.writer.write("]}")
+
+
+@cli.group()
+def releases():
+    """Manage and query Overture Maps releases."""
+    pass
+
+
+@releases.command(name="list")
+def releases_list():
+    """List all available Overture Maps releases."""
+    all_releases = list_releases()
+    if not all_releases:
+        click.echo("No releases found.", err=True)
+        return
+    for release in all_releases:
+        click.echo(release)
+
+
+@releases.command(name="latest")
+def releases_latest():
+    """Show the latest Overture Maps release."""
+    latest = get_latest_release()
+    click.echo(latest)
+
+
+@releases.command(name="check")
+@click.option("-o", "--output", required=True, type=click.Path(exists=True))
+def releases_check(output):
+    """Check if a local file is up to date with the latest release."""
+    state_path = get_state_path(output)
+    state = load_state(state_path)
+    
+    if state is None:
+        click.echo(f"No state file found at {state_path}", err=True)
+        click.echo("Cannot determine current release version.", err=True)
+        sys.exit(1)
+    
+    latest = get_latest_release()
+    
+    click.echo(f"Current release: {state.last_release}")
+    click.echo(f"Latest release:  {latest}")
+    
+    if state.last_release == latest:
+        click.echo("✓ Up to date")
+        sys.exit(0)
+    else:
+        click.echo("✗ Update available")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
