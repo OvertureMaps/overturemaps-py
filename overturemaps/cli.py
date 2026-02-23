@@ -22,7 +22,14 @@ from .core import (
     get_latest_release,
     record_batch_reader,
     record_batch_reader_from_gers,
+    type_theme_map,
 )
+from .releases import list_releases
+from .models import BBox, Backend, PipelineState
+from .state import get_state_path, save_state, load_state
+from .update import apply_update
+from datetime import datetime, timezone
+from pathlib import Path
 
 
 def get_writer(output_format, path, schema):
@@ -161,7 +168,9 @@ def download(
         )
 
     if output is None:
-        output = sys.stdout
+        output_file = sys.stdout
+    else:
+        output_file = output
 
     reader = record_batch_reader(
         type_, bbox, release, connect_timeout, request_timeout, stac
@@ -170,8 +179,34 @@ def download(
     if reader is None:
         return
 
-    with get_writer(output_format, output, schema=reader.schema) as writer:
+    with get_writer(output_format, output_file, schema=reader.schema) as writer:
         copy(reader, writer)
+
+    # Save state file if output was written to a file
+    if output is not None and bbox is not None:
+        # Determine backend from output format
+        backend = Backend(output_format)
+        
+        # Get theme from type
+        theme = type_theme_map.get(type_)
+        if theme is None:
+            click.echo(f"Warning: Could not determine theme for type {type_}", err=True)
+            return
+        
+        # Create and save state
+        state = PipelineState(
+            last_release=release,
+            last_run=datetime.now(timezone.utc).isoformat(),
+            theme=theme,
+            type=type_,
+            bbox=BBox(xmin=bbox[0], ymin=bbox[1], xmax=bbox[2], ymax=bbox[3]),
+            backend=backend,
+            output=output,
+        )
+        
+        state_path = get_state_path(output)
+        save_state(state, state_path)
+        click.echo(f"State saved to {state_path}", err=True)
 
 
 @cli.command()
@@ -326,6 +361,153 @@ class GeoJSONWriter(BaseGeoJSONWriter):
 
     def finalize(self):
         self.writer.write("]}")
+
+
+@cli.group()
+def releases():
+    """Manage and query Overture Maps releases."""
+    pass
+
+
+@releases.command(name="list")
+def releases_list():
+    """List all available Overture Maps releases."""
+    all_releases = list_releases()
+    if not all_releases:
+        click.echo("No releases found.", err=True)
+        return
+    for release in all_releases:
+        click.echo(release)
+
+
+@releases.command(name="latest")
+def releases_latest():
+    """Show the latest Overture Maps release."""
+    latest = get_latest_release()
+    click.echo(latest)
+
+
+@cli.group()
+def update():
+    """Incremental update commands."""
+    pass
+
+
+@update.command(name="run")
+@click.option("-o", "--output", required=True, type=click.Path(exists=True))
+@click.option(
+    "-r",
+    "--release",
+    default=None,
+    callback=validate_release,
+    required=False,
+    help="Target release (defaults to latest)",
+)
+@click.option("--bbox", required=False, type=BboxParamType(), help="Override bbox from state file")
+def update_run(output, release, bbox):
+    """Run incremental update on a local file.
+    
+    Reads parameters from the state file and applies changes from the changelog.
+    
+    Examples:
+        overturemaps update run -o ~/data/buildings.parquet
+        overturemaps update run -o ~/data/buildings.parquet --release=2024-11-13.0
+    """
+    output_path = Path(output)
+    state_path = get_state_path(output_path)
+    
+    # Load state
+    state = load_state(state_path)
+    if state is None:
+        click.echo(f"Error: No state file found at {state_path}", err=True)
+        click.echo("State files are created automatically when using 'overturemaps download' with -o flag.", err=True)
+        sys.exit(1)
+    
+    # Determine target release
+    if release is None:
+        release = get_latest_release()
+    
+    # Check if already up to date
+    if state.last_release == release:
+        click.echo(f"Already up to date at release {release}", err=True)
+        return
+    
+    # Override bbox if provided
+    if bbox is not None:
+        state.bbox = BBox(xmin=bbox[0], ymin=bbox[1], xmax=bbox[2], ymax=bbox[3])
+    
+    click.echo(f"Updating {state.last_release} → {release}...", err=True)
+    click.echo(f"Theme: {state.theme}, Type: {state.type}", err=True)
+    click.echo(f"Bbox: {state.bbox.as_tuple()}", err=True)
+    click.echo()
+    
+    # Apply update
+    try:
+        stats = apply_update(
+            output_path,
+            release,
+            state.theme,
+            state.type,
+            state.bbox,
+            state.backend,
+            from_release=state.last_release,
+        )
+        
+        click.echo(f"Update complete:", err=True)
+        click.echo(f"  Added:    {stats['added']}", err=True)
+        click.echo(f"  Modified: {stats['modified']}", err=True)
+        click.echo(f"  Deleted:  {stats['deleted']}", err=True)
+        click.echo(f"  Original: {stats['original_count']} features", err=True)
+        click.echo(f"  Final:    {stats['final_count']} features", err=True)
+        
+        # Update state file
+        state.last_release = release
+        state.last_run = datetime.now(timezone.utc).isoformat()
+        save_state(state, state_path)
+        click.echo(f"\nState saved to {state_path}", err=True)
+        
+    except Exception as e:
+        click.echo(f"Error during update: {e}", err=True)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+@update.command(name="status")
+@click.option("-o", "--output", required=True, type=click.Path(exists=True))
+def update_status(output):
+    """Show current pipeline state for a local file.
+    
+    Examples:
+        overturemaps update status -o ~/data/buildings.parquet
+    """
+    output_path = Path(output)
+    state_path = get_state_path(output_path)
+    
+    state = load_state(state_path)
+    if state is None:
+        click.echo(f"No state file found at {state_path}", err=True)
+        sys.exit(1)
+    
+    latest = get_latest_release()
+    
+    click.echo(f"File: {output_path}")
+    click.echo(f"State file: {state_path}")
+    click.echo()
+    click.echo(f"Current release: {state.last_release}")
+    click.echo(f"Latest release:  {latest}")
+    click.echo(f"Last run:        {state.last_run}")
+    click.echo()
+    click.echo(f"Theme:   {state.theme}")
+    click.echo(f"Type:    {state.type}")
+    click.echo(f"Backend: {state.backend}")
+    click.echo(f"Bbox:    {state.bbox.as_tuple()}")
+    click.echo()
+    
+    if state.last_release == latest:
+        click.echo("Status: ✓ Up to date")
+    else:
+        click.echo("Status: ✗ Update available")
 
 
 if __name__ == "__main__":
