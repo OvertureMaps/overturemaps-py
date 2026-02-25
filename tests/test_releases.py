@@ -2,6 +2,7 @@
 
 import pytest
 from overturemaps import releases
+from overturemaps.core import get_latest_release
 
 
 def test_list_releases():
@@ -15,7 +16,7 @@ def test_list_releases():
 
 def test_get_latest_release():
     """Test that get_latest_release returns a valid release string."""
-    latest = releases.get_latest_release()
+    latest = get_latest_release()
     assert isinstance(latest, str)
     assert len(latest) > 0
     # Should be in the format YYYY-MM-DD.N
@@ -25,7 +26,7 @@ def test_get_latest_release():
 
 def test_release_exists():
     """Test release_exists with a known release."""
-    latest = releases.get_latest_release()
+    latest = get_latest_release()
     assert releases.release_exists(latest) is True
     assert releases.release_exists("invalid-release") is False
 
