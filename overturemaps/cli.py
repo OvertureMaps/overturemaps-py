@@ -23,7 +23,7 @@ from .core import (
     record_batch_reader,
     record_batch_reader_from_gers,
 )
-from .releases import list_releases
+from .releases import list_releases, release_exists
 
 
 def get_writer(output_format, path, schema):
@@ -351,6 +351,15 @@ def releases_latest():
     """Show the latest Overture Maps release."""
     latest = get_latest_release()
     click.echo(latest)
+
+
+@releases.command(name="exists")
+@click.argument("release")
+def releases_exists(release):
+    """Check whether a release exists."""
+    if not release_exists(release):
+        raise click.ClickException(f"Release '{release}' not found")
+    click.echo("true")
 
 
 if __name__ == "__main__":
