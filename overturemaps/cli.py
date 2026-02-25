@@ -24,10 +24,10 @@ from .core import (
     record_batch_reader_from_gers,
     type_theme_map,
 )
-from .releases import list_releases
 from .models import BBox, Backend, PipelineState
 from .state import get_state_path, save_state, load_state
 from datetime import datetime, timezone
+from .releases import list_releases, release_exists
 
 
 def get_writer(output_format, path, schema):
@@ -408,6 +408,15 @@ def releases_check(output):
     else:
         click.echo("✗ Update available")
         sys.exit(1)
+
+
+@releases.command(name="exists")
+@click.argument("release")
+def releases_exists(release):
+    """Check whether a release exists."""
+    if not release_exists(release):
+        raise click.ClickException(f"Release '{release}' not found")
+    click.echo("true")
 
 
 if __name__ == "__main__":
