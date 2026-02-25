@@ -27,7 +27,7 @@ from .core import (
     type_theme_map,
 )
 from .models import Backend, BBox, PipelineState
-from .releases import list_releases
+from .releases import list_releases, release_exists
 from .state import get_state_path, load_state, save_state
 
 
@@ -524,6 +524,15 @@ def releases_check(output):
     else:
         click.echo("✗ Update available")
         sys.exit(1)
+
+
+@releases.command(name="exists")
+@click.argument("release")
+def releases_exists(release):
+    """Check whether a release exists."""
+    if not release_exists(release):
+        raise click.ClickException(f"Release '{release}' not found")
+    click.echo("true")
 
 
 if __name__ == "__main__":
