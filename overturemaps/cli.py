@@ -181,7 +181,9 @@ def download(
         copy(reader, writer)
 
     # Save state file if output was written to a file
-    if output is not None and bbox is not None:
+    if output is not None:
+        output_path = os.path.abspath(os.path.expanduser(output))
+
         # Determine backend from output format
         backend = Backend(output_format)
 
@@ -197,9 +199,13 @@ def download(
             last_run=datetime.now(timezone.utc).isoformat(),
             theme=theme,
             type=type_,
-            bbox=BBox(xmin=bbox[0], ymin=bbox[1], xmax=bbox[2], ymax=bbox[3]),
+            bbox=(
+                BBox(xmin=bbox[0], ymin=bbox[1], xmax=bbox[2], ymax=bbox[3])
+                if bbox is not None
+                else None
+            ),
             backend=backend,
-            output=output,
+            output=output_path,
         )
 
         state_path = get_state_path(output)
@@ -220,7 +226,8 @@ def download(
 @click.option("-o", "--output", required=False, type=click.Path())
 @click.option("--connect_timeout", required=False, type=int)
 @click.option("--request_timeout", required=False, type=int)
-def gers(gers_id, output_format, output, connect_timeout, request_timeout):
+@click.pass_context
+def gers(ctx, gers_id, output_format, output, connect_timeout, request_timeout):
     """
     Query the GERS registry for a feature by its GERS ID.
 
@@ -237,7 +244,7 @@ def gers(gers_id, output_format, output, connect_timeout, request_timeout):
 
     if result is None:
         # Error message already printed by query_gers_registry
-        sys.exit(1)
+        ctx.exit(1)
 
     # If no format specified, we're done - just show the registry info
     if output_format is None:
@@ -264,7 +271,7 @@ def gers(gers_id, output_format, output, connect_timeout, request_timeout):
             f"Could not fetch feature data for GERS ID '{gers_id}'",
             err=True,
         )
-        sys.exit(1)
+        ctx.exit(1)
 
     with get_writer(output_format, output, schema=reader.schema) as writer:
         copy(reader, writer)
@@ -387,7 +394,8 @@ def releases_latest():
 
 @releases.command(name="check")
 @click.option("-o", "--output", required=True, type=click.Path(exists=True))
-def releases_check(output):
+@click.pass_context
+def releases_check(ctx, output):
     """Check if a local file is up to date with the latest release."""
     state_path = get_state_path(output)
     state = load_state(state_path)
@@ -395,7 +403,7 @@ def releases_check(output):
     if state is None:
         click.echo(f"No state file found at {state_path}", err=True)
         click.echo("Cannot determine current release version.", err=True)
-        sys.exit(1)
+        ctx.exit(1)
 
     latest = get_latest_release()
 
@@ -404,10 +412,10 @@ def releases_check(output):
 
     if state.last_release == latest:
         click.echo("✓ Up to date")
-        sys.exit(0)
+        ctx.exit(0)
     else:
         click.echo("✗ Update available")
-        sys.exit(1)
+        ctx.exit(1)
 
 
 @releases.command(name="exists")

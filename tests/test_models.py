@@ -51,7 +51,7 @@ def test_pipeline_state_serialization():
         backend=Backend.geoparquet,
         output="/tmp/output.parquet",
     )
-    
+
     # Serialize to dict
     data = state.as_dict()
     assert data["last_release"] == "2024-11-13.0"
@@ -59,7 +59,7 @@ def test_pipeline_state_serialization():
     assert data["type"] == "building"
     assert data["backend"] == "geoparquet"
     assert data["bbox"]["xmin"] == -97.8
-    
+
     # Deserialize from dict
     restored = PipelineState.from_dict(data)
     assert restored.last_release == state.last_release
@@ -67,4 +67,25 @@ def test_pipeline_state_serialization():
     assert restored.type == state.type
     assert restored.backend == state.backend
     assert restored.bbox.xmin == state.bbox.xmin
+    assert restored.output == state.output
+
+
+def test_pipeline_state_serialization_with_null_bbox():
+    """Test PipelineState serialization and deserialization with null bbox."""
+    state = PipelineState(
+        last_release="2024-11-13.0",
+        last_run="2024-11-13T12:00:00Z",
+        theme="buildings",
+        type="building",
+        bbox=None,
+        backend=Backend.geojson,
+        output="/tmp/output.geojson",
+    )
+
+    data = state.as_dict()
+    assert data["bbox"] is None
+
+    restored = PipelineState.from_dict(data)
+    assert restored.bbox is None
+    assert restored.last_release == state.last_release
     assert restored.output == state.output
