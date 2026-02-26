@@ -5,10 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-# Compatibility shim for Python 3.10 (StrEnum was added in 3.11)
-try:
-    from enum import StrEnum
-except ImportError:
 
     class StrEnum(str, Enum):
         """String enumeration for Python < 3.11 compatibility."""
@@ -35,6 +31,9 @@ class Backend(StrEnum):
     geojson = "geojson"
     geojsonseq = "geojsonseq"
     geoparquet = "geoparquet"
+
+    def __str__(self) -> str:
+        return str(self.value)
 
 
 @dataclass
