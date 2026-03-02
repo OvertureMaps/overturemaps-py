@@ -222,7 +222,12 @@ def _create_s3_record_batch_reader(
             ),
         )
 
-        batches = dataset.to_batches(filter=filter_expr)
+        batches = dataset.to_batches(
+            filter=filter_expr,
+            use_threads=True,
+            batch_readahead=16,
+            fragment_readahead=4,
+        )
 
         # Filter out empty batches to avoid downstream issues
         non_empty_batches = (b for b in batches if b.num_rows > 0)

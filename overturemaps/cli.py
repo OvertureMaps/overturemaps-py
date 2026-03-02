@@ -14,8 +14,9 @@ import uuid
 from datetime import datetime, timezone
 
 import click
+import orjson
 import pyarrow.parquet as pq
-import shapely.wkb
+import shapely
 
 from .changelog import query_changelog_ids, summarize_changelog
 from .core import (
@@ -387,34 +388,31 @@ class BaseGeoJSONWriter:
         if batch.num_rows == 0:
             return
 
-        for row in batch.to_pylist():
-            feature = self.row_to_feature(row)
-            self.write_feature(feature)
+        geom_strings = shapely.to_geojson(
+            shapely.from_wkb(batch.column("geometry").to_pylist())
+        )
 
-    def write_feature(self, feature):
+        prop_cols = [c for c in batch.schema.names if c not in ("geometry", "bbox")]
+        rows = batch.select(prop_cols).to_pylist()
+
+        for geom_str, row in zip(geom_strings, rows):
+            self.write_feature(geom_str, row)
+
+    def write_feature(self, geom_str, props):
         pass
 
     def finalize(self):
         pass
 
-    def row_to_feature(self, row):
-        geometry = shapely.wkb.loads(row.pop("geometry"))
-        row.pop("bbox")
-
-        # This only removes null values in the top-level dictionary but will leave in
-        # nulls in sub-properties
-        properties = {k: v for k, v in row.items() if k != "bbox" and v is not None}
-        return {
-            "type": "Feature",
-            "geometry": geometry.__geo_interface__,
-            "properties": properties,
-        }
-
 
 class GeoJSONSeqWriter(BaseGeoJSONWriter):
-    def write_feature(self, feature):
-        self.writer.write(json.dumps(feature, separators=(",", ":")))
-        self.writer.write("\n")
+    def write_feature(self, geom_str, props):
+        props_str = orjson.dumps(
+            {k: v for k, v in props.items() if v is not None}
+        ).decode()
+        self.writer.write(
+            f'{{"type":"Feature","geometry":{geom_str},"properties":{props_str}}}\n'
+        )
 
 
 class GeoJSONWriter(BaseGeoJSONWriter):
@@ -424,10 +422,15 @@ class GeoJSONWriter(BaseGeoJSONWriter):
 
         self.writer.write('{"type": "FeatureCollection", "features": [\n')
 
-    def write_feature(self, feature):
+    def write_feature(self, geom_str, props):
+        props_str = orjson.dumps(
+            {k: v for k, v in props.items() if v is not None}
+        ).decode()
         if self._has_written_feature:
             self.writer.write(",\n")
-        self.writer.write(json.dumps(feature, separators=(",", ":")))
+        self.writer.write(
+            f'{{"type":"Feature","geometry":{geom_str},"properties":{props_str}}}'
+        )
         self._has_written_feature = True
 
     def finalize(self):
