@@ -154,7 +154,7 @@ def cli():
     type=bool,
     is_flag=True,
     default=True,
-    help="If set, directly read from the dataset path instead of using the STAC-geoparquet index.",
+    help="By default, uses the STAC catalog to limit which Parquet files are downloaded. Pass --no-stac to skip the catalog and read the full S3 dataset directly.",
 )
 @click.option("--connect_timeout", required=False, type=int)
 @click.option("--request_timeout", required=False, type=int)
