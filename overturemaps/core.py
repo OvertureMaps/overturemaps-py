@@ -162,41 +162,25 @@ def _get_files_from_stac(
         return None
 
 
-def _create_s3_record_batch_reader(
-    path,
+def _record_batch_reader_from_dataset(
+    dataset: ds.Dataset,
     filter_expr=None,
-    connect_timeout=None,
-    request_timeout=None,
 ) -> Optional[pa.RecordBatchReader]:
     """
-    Create a RecordBatchReader from S3 path(s) with optional filtering.
+    Create a RecordBatchReader from an S3 dataset with optional filtering.
 
     Parameters
     ----------
-    path: str or list of str
-        S3 path(s) in the format "bucket/key" (without s3:// prefix)
+    dataset: pyarrow dataset
+        Dataset to read from
     filter_expr: pyarrow expression, optional
         Filter to apply when reading the dataset
-    connect_timeout: int, optional
-        Connection timeout in seconds
-    request_timeout: int, optional
-        Request timeout in seconds
 
     Returns
     -------
     RecordBatchReader with the feature data, or None if error occurs
     """
     try:
-        dataset = ds.dataset(
-            path,
-            filesystem=fs.S3FileSystem(
-                anonymous=True,
-                region="us-west-2",
-                connect_timeout=connect_timeout,
-                request_timeout=request_timeout,
-            ),
-        )
-
         batches = dataset.to_batches(
             filter=filter_expr,
             use_threads=True,
@@ -208,27 +192,26 @@ def _create_s3_record_batch_reader(
         non_empty_batches = (b for b in batches if b.num_rows > 0)
 
         geoarrow_schema = geoarrow_schema_adapter(dataset.schema)
-        reader = pa.RecordBatchReader.from_batches(geoarrow_schema, non_empty_batches)
-
-        return reader
+        return pa.RecordBatchReader.from_batches(geoarrow_schema, non_empty_batches)
 
     except Exception as e:
-        print(f"Error reading data from path {path}: {e}")
+        print(f"Error reading dataset: {e}")
         return None
 
 
-def record_batch_reader(
+def _prepare_query(
     overture_type,
     bbox=None,
     release=None,
     connect_timeout=None,
     request_timeout=None,
     stac=False,
-) -> Optional[pa.RecordBatchReader]:
+) -> Tuple[ds.Dataset, Optional[pc.Expression]]:
     """
-    Return a pyarrow RecordBatchReader for the desired bounding box and s3 path
-    """
+    Resolve the S3 dataset and filter expression for a given query.
 
+    Returns the dataset and filter expression ready for counting or streaming.
+    """
     if release is None:
         release = get_latest_release()
     path = _dataset_path(overture_type, release)
@@ -250,12 +233,47 @@ def record_batch_reader(
     else:
         filter_expr = None
 
-    return _create_s3_record_batch_reader(
+    dataset = ds.dataset(
         intersecting_files if intersecting_files else path,
-        filter_expr=filter_expr,
-        connect_timeout=connect_timeout,
-        request_timeout=request_timeout,
+        filesystem=fs.S3FileSystem(
+            anonymous=True,
+            region="us-west-2",
+            connect_timeout=connect_timeout,
+            request_timeout=request_timeout,
+        ),
     )
+
+    return dataset, filter_expr
+
+
+def count_rows(
+    overture_type,
+    bbox=None,
+    release=None,
+    connect_timeout=None,
+    request_timeout=None,
+    stac=False,
+) -> int:
+    """Return the number of rows matching the given parameters."""
+    dataset, filter_expr = _prepare_query(
+        overture_type, bbox, release, connect_timeout, request_timeout, stac
+    )
+    return dataset.count_rows(filter=filter_expr)
+
+
+def record_batch_reader(
+    overture_type,
+    bbox=None,
+    release=None,
+    connect_timeout=None,
+    request_timeout=None,
+    stac=False,
+) -> Optional[pa.RecordBatchReader]:
+    """Return a pyarrow RecordBatchReader for the desired bounding box and s3 path, or None on error."""
+    dataset, filter_expr = _prepare_query(
+        overture_type, bbox, release, connect_timeout, request_timeout, stac
+    )
+    return _record_batch_reader_from_dataset(dataset, filter_expr=filter_expr)
 
 
 def geodataframe(
@@ -567,9 +585,13 @@ def record_batch_reader_from_gers(
         )
         filter_expr = filter_expr & bbox_filter
 
-    return _create_s3_record_batch_reader(
+    dataset = ds.dataset(
         filepath,
-        filter_expr=filter_expr,
-        connect_timeout=connect_timeout,
-        request_timeout=request_timeout,
+        filesystem=fs.S3FileSystem(
+            anonymous=True,
+            region="us-west-2",
+            connect_timeout=connect_timeout,
+            request_timeout=request_timeout,
+        ),
     )
+    return _record_batch_reader_from_dataset(dataset, filter_expr=filter_expr)
