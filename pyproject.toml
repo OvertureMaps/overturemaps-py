@@ -25,6 +25,7 @@ dependencies = [
     # (4) it's already a transitive dependency of geopandas when that optional extra is installed.
     # Keeping it signals that this package is ready for data science workflows.
     "numpy>=1.26.4",
+    "tqdm>=4.67.3",
 ]
 
 [project.urls]

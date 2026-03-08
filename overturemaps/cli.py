@@ -16,6 +16,7 @@ import click
 import orjson
 import pyarrow.parquet as pq
 import shapely
+from tqdm import tqdm
 
 from .core import (
     get_all_overture_types,
@@ -23,6 +24,7 @@ from .core import (
     get_latest_release,
     record_batch_reader,
     record_batch_reader_from_gers,
+    count_rows,
 )
 from .releases import list_releases, release_exists
 
@@ -165,6 +167,8 @@ def download(
     if output is None:
         output = sys.stdout
 
+    total = count_rows(type_, bbox, release, connect_timeout, request_timeout, stac)
+
     reader = record_batch_reader(
         type_, bbox, release, connect_timeout, request_timeout, stac
     )
@@ -173,7 +177,7 @@ def download(
         return
 
     with get_writer(output_format, output, schema=reader.schema) as writer:
-        copy(reader, writer)
+        copy(reader, writer, total=total)
 
 
 @cli.command()
@@ -239,14 +243,16 @@ def gers(gers_id, output_format, output, connect_timeout, request_timeout):
         copy(reader, writer)
 
 
-def copy(reader, writer):
-    while True:
-        try:
-            batch = reader.read_next_batch()
-        except StopIteration:
-            break
-        if batch.num_rows > 0:
-            writer.write_batch(batch)
+def copy(reader, writer, total=None):
+    with tqdm(total=total, unit="rows", desc="Downloading", file=sys.stderr) as bar:
+        while True:
+            try:
+                batch = reader.read_next_batch()
+            except StopIteration:
+                break
+            if batch.num_rows > 0:
+                writer.write_batch(batch)
+                bar.update(batch.num_rows)
 
 
 class BaseGeoJSONWriter:
