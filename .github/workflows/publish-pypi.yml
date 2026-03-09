@@ -54,5 +54,5 @@ jobs:
         with:
           repository-url: ${{ github.event_name == 'pull_request' && 'https://test.pypi.org/legacy/' || '' }}
           skip-existing: ${{ github.event_name == 'pull_request' }}
-          attestations: ${{ github.event_name != 'pull_request' }}
+          attestations: true
           verbose: true
