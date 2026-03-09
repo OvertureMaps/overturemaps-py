@@ -11,9 +11,9 @@ on:
   release:
     types: [published]
   pull_request:
-    paths:
-      - pyproject.toml
-      - .github/workflows/publish-pypi.yaml
+    # paths:
+    #   - pyproject.toml
+    #   - .github/workflows/publish-pypi.yaml
 
 jobs:
   build:
