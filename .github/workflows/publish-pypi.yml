@@ -10,10 +10,7 @@ name: Publish overturemaps-py
 on:
   release:
     types: [published]
-  pull_request:
-    # paths:
-    #   - pyproject.toml
-    #   - .github/workflows/publish-pypi.yaml
+  workflow_dispatch:
 
 jobs:
   build:
@@ -36,10 +33,12 @@ jobs:
           path: dist/
 
   publish:
-    name: Target '${{ github.event_name == 'pull_request' && 'Test PyPI' || 'PyPI' }}'
+    name: Target '${{ github.event_name == 'workflow_dispatch' && 'Test PyPI' || 'PyPI' }}'
     needs: build
     runs-on: ubuntu-latest
-    environment: ${{ github.event_name == 'pull_request' && 'test-pypi' || 'pypi' }}
+    environment: ${{ github.event_name == 'workflow_dispatch' && 'test-pypi' || 'pypi' }}
+    env:
+      TEST_PYPI_URL: https://test.pypi.org/legacy/
     permissions:
       id-token: write # OIDC — required for PyPI trusted publishing
     steps:
@@ -52,7 +51,7 @@ jobs:
       - name: Publish
         uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
         with:
-          repository-url: ${{ github.event_name == 'pull_request' && 'https://test.pypi.org/legacy/' || '' }}
-          skip-existing: ${{ github.event_name == 'pull_request' }}
+          repository-url: ${{ github.event_name == 'workflow_dispatch' && env.TEST_PYPI_URL || '' }}
+          skip-existing: ${{ github.event_name == 'workflow_dispatch' }} # Don't fail on version conflicts during test-publishing
           attestations: true
-          verbose: true
+          verbose: false
