@@ -36,7 +36,7 @@ jobs:
           path: dist/
 
   publish:
-    name: Publish to ${{ github.event_name == 'pull_request' && 'Test PyPI' || 'PyPI' }}
+    name: Publish to '${{ github.event_name == 'pull_request' && 'Test PyPI' || 'PyPI' }}'
     needs: build
     runs-on: ubuntu-latest
     environment: ${{ github.event_name == 'pull_request' && 'test-pypi' || 'pypi' }}
