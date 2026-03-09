@@ -1,9 +1,8 @@
 ---
 # Publishes the overturemaps package in two scenarios:
 #   1. Release (production): triggered when a GitHub Release is published → publishes to PyPI.
-#   2. PR validation (dry-run): triggered on PRs that touch pyproject.toml or this workflow
-#      → publishes to Test PyPI to verify the build and publish pipeline end-to-end
-#      without affecting the production package index.
+#   2. Dry-run: triggered manually via workflow_dispatch → publishes to Test PyPI to verify
+#      the build and publish pipeline end-to-end without affecting the production package index.
 # Uses OIDC trusted publishing — no API token required.
 name: Publish overturemaps-py
 
