@@ -23,6 +23,7 @@ from .core import (
     record_batch_reader,
     record_batch_reader_from_gers,
 )
+from .releases import list_releases, release_exists
 
 
 def get_writer(output_format, path, schema):
@@ -148,7 +149,7 @@ def cli():
     type=bool,
     is_flag=True,
     default=True,
-    help="If set, directly read from the dataset path instead of using the STAC-geoparquet index.",
+    help="By default, uses the STAC catalog to limit which Parquet files are downloaded. Pass --no-stac to skip the catalog and read the full S3 dataset directly.",
 )
 @click.option("--connect_timeout", required=False, type=int)
 @click.option("--request_timeout", required=False, type=int)
@@ -326,6 +327,39 @@ class GeoJSONWriter(BaseGeoJSONWriter):
 
     def finalize(self):
         self.writer.write("]}")
+
+
+@cli.group()
+def releases():
+    """Manage and query Overture Maps releases."""
+    pass
+
+
+@releases.command(name="list")
+def releases_list():
+    """List all available Overture Maps releases."""
+    all_releases = list_releases()
+    if not all_releases:
+        click.echo("No releases found.", err=True)
+        return
+    for release in all_releases:
+        click.echo(release)
+
+
+@releases.command(name="latest")
+def releases_latest():
+    """Show the latest Overture Maps release."""
+    latest = get_latest_release()
+    click.echo(latest)
+
+
+@releases.command(name="exists")
+@click.argument("release")
+def releases_exists(release):
+    """Check whether a release exists."""
+    if not release_exists(release):
+        raise click.ClickException(f"Release '{release}' not found")
+    click.echo("true")
 
 
 if __name__ == "__main__":
