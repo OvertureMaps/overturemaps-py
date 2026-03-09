@@ -29,3 +29,12 @@ jobs:
 
       - name: CLI smoke test
         run: uv run overturemaps download --bbox=-71.068,42.353,-71.058,42.363 -f geojson --type=building -o boston.geojson
+
+  rollup-test-status:
+    name: Check test results
+    if: always()
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
