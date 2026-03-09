@@ -1,0 +1,55 @@
+---
+# Publishes the overturemaps package in two scenarios:
+#   1. Release (production): triggered when a GitHub Release is published → publishes to PyPI.
+#   2. PR validation (dry-run): triggered on PRs that touch pyproject.toml or this workflow
+#      → publishes to Test PyPI to verify the build and publish pipeline end-to-end
+#      without affecting the production package index.
+# Uses OIDC trusted publishing — no API token required.
+name: Publish overturemaps-py
+
+on:
+  release:
+    types: [published]
+  pull_request:
+    paths:
+      - pyproject.toml
+      - .github/workflows/publish-overturemaps-py.yaml
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Build package
+        run: uv build
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to ${{ github.event_name == 'pull_request' && 'Test PyPI' || 'PyPI' }}
+    needs: build
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'pull_request' && 'test-pypi' || 'pypi' }}
+    permissions:
+      id-token: write # OIDC — required for PyPI trusted publishing
+    steps:
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+        with:
+          repository-url: ${{ github.event_name == 'pull_request' && 'https://test.pypi.org/legacy/' || '' }}
