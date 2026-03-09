@@ -36,7 +36,7 @@ jobs:
           path: dist/
 
   publish:
-    name: Publish to '${{ github.event_name == 'pull_request' && 'Test PyPI' || 'PyPI' }}'
+    name: Target '${{ github.event_name == 'pull_request' && 'Test PyPI' || 'PyPI' }}'
     needs: build
     runs-on: ubuntu-latest
     environment: ${{ github.event_name == 'pull_request' && 'test-pypi' || 'pypi' }}
@@ -53,3 +53,4 @@ jobs:
         uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
         with:
           repository-url: ${{ github.event_name == 'pull_request' && 'https://test.pypi.org/legacy/' || '' }}
+          skip-existing: ${{ github.event_name == 'pull_request' }}
