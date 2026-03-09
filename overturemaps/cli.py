@@ -22,7 +22,11 @@ from .core import (
     get_latest_release,
     record_batch_reader,
     record_batch_reader_from_gers,
+    type_theme_map,
 )
+from .models import BBox, Backend, PipelineState
+from .state import get_state_path, save_state, load_state
+from datetime import datetime, timezone
 from .releases import list_releases, release_exists
 
 
@@ -65,19 +69,62 @@ def get_writer(output_format, path, schema):
     return writer
 
 
+# Earth's total surface area in square degrees (360 * 180).
+EARTH_AREA_SQ_DEG = 64800
+# Threshold (fraction of Earth) above which we warn about a large bbox.
+LARGE_BBOX_THRESHOLD = 0.01  # 1% of Earth
+
+
+def _bbox_area_sq_deg(xmin: float, ymin: float, xmax: float, ymax: float) -> float:
+    """Return the area of a lon/lat bbox in square degrees."""
+    return abs(xmax - xmin) * abs(ymax - ymin)
+
+
 class BboxParamType(click.ParamType):
     name = "bbox"
 
     def convert(self, value, param, ctx):
-        try:
-            bbox = [float(x.strip()) for x in value.split(",")]
-            fail = False
-        except ValueError:  # ValueError raised when passing non-numbers to float()
-            fail = True
-
-        if fail or len(bbox) != 4:
+        parts = value.split(",")
+        if len(parts) != 4:
             self.fail(
-                f"bbox must be 4 floating point numbers separated by commas. Got '{value}'"
+                f"bbox requires exactly 4 values (xmin,ymin,xmax,ymax), "
+                f"got {len(parts)}. Example: --bbox -71.10,42.34,-71.05,42.36"
+            )
+
+        try:
+            bbox = [float(x.strip()) for x in parts]
+        except ValueError:
+            self.fail(
+                f"All bbox values must be numbers. Got '{value}'. "
+                f"Example: --bbox -71.10,42.34,-71.05,42.36"
+            )
+
+        xmin, ymin, xmax, ymax = bbox
+
+        # Validate longitude range
+        if not (-180 <= xmin <= 180 and -180 <= xmax <= 180):
+            self.fail(
+                f"Longitude values must be between -180 and 180. "
+                f"Got xmin={xmin}, xmax={xmax}"
+            )
+
+        # Validate latitude range
+        if not (-90 <= ymin <= 90 and -90 <= ymax <= 90):
+            self.fail(
+                f"Latitude values must be between -90 and 90. "
+                f"Got ymin={ymin}, ymax={ymax}"
+            )
+
+        # Check for swapped min/max
+        if xmin > xmax:
+            self.fail(
+                f"xmin ({xmin}) must be less than or equal to xmax ({xmax}). "
+                f"bbox format is: xmin,ymin,xmax,ymax"
+            )
+        if ymin > ymax:
+            self.fail(
+                f"ymin ({ymin}) must be less than or equal to ymax ({ymax}). "
+                f"bbox format is: xmin,ymin,xmax,ymax"
             )
 
         return bbox
@@ -156,13 +203,37 @@ def cli():
 def download(
     bbox, output_format, output, type_, release, connect_timeout, request_timeout, stac
 ):
+    # Warn when no bbox is provided
+    if bbox is None:
+        click.echo(
+            "Warning: No bounding box provided. Downloading the entire dataset "
+            "for this type. The full Overture dataset is approximately "
+            "1.2 TB as GeoJSON and 400 GB as GeoParquet.",
+            err=True,
+        )
+    else:
+        # Warn if the bbox covers a large area
+        area = _bbox_area_sq_deg(bbox[0], bbox[1], bbox[2], bbox[3])
+        fraction = area / EARTH_AREA_SQ_DEG
+        if fraction >= LARGE_BBOX_THRESHOLD:
+            pct = fraction * 100
+            click.echo(
+                f"Warning: The bounding box covers ~{pct:.1f}% of Earth's surface. "
+                f"This may take a long time and use significant bandwidth. "
+                f"The full Overture dataset is approximately "
+                f"1.2 TB as GeoJSON and 400 GB as GeoParquet.",
+                err=True,
+            )
+
     if output_format == "geoparquet" and output is None:
         raise click.UsageError(
             "Output file (-o/--output) is required when using geoparquet format"
         )
 
     if output is None:
-        output = sys.stdout
+        output_file = sys.stdout
+    else:
+        output_file = output
 
     reader = record_batch_reader(
         type_, bbox, release, connect_timeout, request_timeout, stac
@@ -171,8 +242,40 @@ def download(
     if reader is None:
         return
 
-    with get_writer(output_format, output, schema=reader.schema) as writer:
+    with get_writer(output_format, output_file, schema=reader.schema) as writer:
         copy(reader, writer)
+
+    # Save state file if output was written to a file
+    if output is not None:
+        output_path = os.path.abspath(os.path.expanduser(output))
+
+        # Determine backend from output format
+        backend = Backend(output_format)
+
+        # Get theme from type
+        theme = type_theme_map.get(type_)
+        if theme is None:
+            click.echo(f"Warning: Could not determine theme for type {type_}", err=True)
+            return
+
+        # Create and save state
+        state = PipelineState(
+            last_release=release,
+            last_run=datetime.now(timezone.utc).isoformat(),
+            theme=theme,
+            type=type_,
+            bbox=(
+                BBox(xmin=bbox[0], ymin=bbox[1], xmax=bbox[2], ymax=bbox[3])
+                if bbox is not None
+                else None
+            ),
+            backend=backend,
+            output=output_path,
+        )
+
+        state_path = get_state_path(output)
+        save_state(state, state_path)
+        click.echo(f"State saved to {state_path}", err=True)
 
 
 @cli.command()
@@ -188,7 +291,8 @@ def download(
 @click.option("-o", "--output", required=False, type=click.Path())
 @click.option("--connect_timeout", required=False, type=int)
 @click.option("--request_timeout", required=False, type=int)
-def gers(gers_id, output_format, output, connect_timeout, request_timeout):
+@click.pass_context
+def gers(ctx, gers_id, output_format, output, connect_timeout, request_timeout):
     """
     Query the GERS registry for a feature by its GERS ID.
 
@@ -205,7 +309,7 @@ def gers(gers_id, output_format, output, connect_timeout, request_timeout):
 
     if result is None:
         # Error message already printed by query_gers_registry
-        sys.exit(1)
+        ctx.exit(1)
 
     # If no format specified, we're done - just show the registry info
     if output_format is None:
@@ -232,7 +336,7 @@ def gers(gers_id, output_format, output, connect_timeout, request_timeout):
             f"Could not fetch feature data for GERS ID '{gers_id}'",
             err=True,
         )
-        sys.exit(1)
+        ctx.exit(1)
 
     with get_writer(output_format, output, schema=reader.schema) as writer:
         copy(reader, writer)
@@ -351,6 +455,32 @@ def releases_latest():
     """Show the latest Overture Maps release."""
     latest = get_latest_release()
     click.echo(latest)
+
+
+@releases.command(name="check")
+@click.option("-o", "--output", required=True, type=click.Path(exists=True))
+@click.pass_context
+def releases_check(ctx, output):
+    """Check if a local file is up to date with the latest release."""
+    state_path = get_state_path(output)
+    state = load_state(state_path)
+
+    if state is None:
+        click.echo(f"No state file found at {state_path}", err=True)
+        click.echo("Cannot determine current release version.", err=True)
+        ctx.exit(1)
+
+    latest = get_latest_release()
+
+    click.echo(f"Current release: {state.last_release}")
+    click.echo(f"Latest release:  {latest}")
+
+    if state.last_release == latest:
+        click.echo("✓ Up to date")
+        ctx.exit(0)
+    else:
+        click.echo("✗ Update available")
+        ctx.exit(1)
 
 
 @releases.command(name="exists")
