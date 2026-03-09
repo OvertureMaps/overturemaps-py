@@ -1,5 +1,5 @@
 [project]
-name = "overturemaps"
+name = "overturemaps-py"
 version = "0.19.1"
 description = "Python tools for interacting with Overture Maps (overturemaps.org) data."
 authors = [
