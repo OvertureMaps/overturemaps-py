@@ -69,19 +69,62 @@ def get_writer(output_format, path, schema):
     return writer
 
 
+# Earth's total surface area in square degrees (360 * 180).
+EARTH_AREA_SQ_DEG = 64800
+# Threshold (fraction of Earth) above which we warn about a large bbox.
+LARGE_BBOX_THRESHOLD = 0.01  # 1% of Earth
+
+
+def _bbox_area_sq_deg(xmin: float, ymin: float, xmax: float, ymax: float) -> float:
+    """Return the area of a lon/lat bbox in square degrees."""
+    return abs(xmax - xmin) * abs(ymax - ymin)
+
+
 class BboxParamType(click.ParamType):
     name = "bbox"
 
     def convert(self, value, param, ctx):
-        try:
-            bbox = [float(x.strip()) for x in value.split(",")]
-            fail = False
-        except ValueError:  # ValueError raised when passing non-numbers to float()
-            fail = True
-
-        if fail or len(bbox) != 4:
+        parts = value.split(",")
+        if len(parts) != 4:
             self.fail(
-                f"bbox must be 4 floating point numbers separated by commas. Got '{value}'"
+                f"bbox requires exactly 4 values (xmin,ymin,xmax,ymax), "
+                f"got {len(parts)}. Example: --bbox -71.10,42.34,-71.05,42.36"
+            )
+
+        try:
+            bbox = [float(x.strip()) for x in parts]
+        except ValueError:
+            self.fail(
+                f"All bbox values must be numbers. Got '{value}'. "
+                f"Example: --bbox -71.10,42.34,-71.05,42.36"
+            )
+
+        xmin, ymin, xmax, ymax = bbox
+
+        # Validate longitude range
+        if not (-180 <= xmin <= 180 and -180 <= xmax <= 180):
+            self.fail(
+                f"Longitude values must be between -180 and 180. "
+                f"Got xmin={xmin}, xmax={xmax}"
+            )
+
+        # Validate latitude range
+        if not (-90 <= ymin <= 90 and -90 <= ymax <= 90):
+            self.fail(
+                f"Latitude values must be between -90 and 90. "
+                f"Got ymin={ymin}, ymax={ymax}"
+            )
+
+        # Check for swapped min/max
+        if xmin > xmax:
+            self.fail(
+                f"xmin ({xmin}) must be less than or equal to xmax ({xmax}). "
+                f"bbox format is: xmin,ymin,xmax,ymax"
+            )
+        if ymin > ymax:
+            self.fail(
+                f"ymin ({ymin}) must be less than or equal to ymax ({ymax}). "
+                f"bbox format is: xmin,ymin,xmax,ymax"
             )
 
         return bbox
@@ -160,6 +203,28 @@ def cli():
 def download(
     bbox, output_format, output, type_, release, connect_timeout, request_timeout, stac
 ):
+    # Warn when no bbox is provided
+    if bbox is None:
+        click.echo(
+            "Warning: No bounding box provided. Downloading the entire dataset "
+            "for this type. The full Overture dataset is approximately "
+            "1.2 TB as GeoJSON and 400 GB as GeoParquet.",
+            err=True,
+        )
+    else:
+        # Warn if the bbox covers a large area
+        area = _bbox_area_sq_deg(bbox[0], bbox[1], bbox[2], bbox[3])
+        fraction = area / EARTH_AREA_SQ_DEG
+        if fraction >= LARGE_BBOX_THRESHOLD:
+            pct = fraction * 100
+            click.echo(
+                f"Warning: The bounding box covers ~{pct:.1f}% of Earth's surface. "
+                f"This may take a long time and use significant bandwidth. "
+                f"The full Overture dataset is approximately "
+                f"1.2 TB as GeoJSON and 400 GB as GeoParquet.",
+                err=True,
+            )
+
     if output_format == "geoparquet" and output is None:
         raise click.UsageError(
             "Output file (-o/--output) is required when using geoparquet format"
