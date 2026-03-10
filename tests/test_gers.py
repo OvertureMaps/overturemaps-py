@@ -5,6 +5,7 @@ Tests for GERS (Global Entity Reference System) functionality.
 import pyarrow as pa
 import pytest
 from overturemaps.core import query_gers_registry, record_batch_reader_from_gers
+from overturemaps.models import BBox
 
 
 class TestGersIntegration:
@@ -23,8 +24,11 @@ class TestGersIntegration:
         assert filepath.startswith("overturemaps-us-west-2/release/")
         assert "theme=buildings" in filepath
         assert "type=building" in filepath
-        assert len(bbox) == 4
-        assert all(isinstance(x, float) for x in bbox)
+        assert isinstance(bbox, BBox)
+        assert isinstance(bbox.xmin, float)
+        assert isinstance(bbox.ymin, float)
+        assert isinstance(bbox.xmax, float)
+        assert isinstance(bbox.ymax, float)
 
     @pytest.mark.integration
     def test_real_record_batch_reader(self):

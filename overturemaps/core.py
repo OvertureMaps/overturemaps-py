@@ -9,6 +9,8 @@ import pyarrow.dataset as ds
 import pyarrow.fs as fs
 import pyarrow.parquet as pq
 
+from .models import BBox
+
 STAC_CATALOG_URL = "https://stac.overturemaps.org/catalog.json"
 
 # Cache for STAC catalog to avoid repeated network calls
@@ -115,8 +117,29 @@ class _ReleasesProxy:
 ALL_RELEASES = _ReleasesProxy()
 
 
+def _coerce_bbox(
+    bbox: BBox | tuple[float, float, float, float] | list[float] | None,
+) -> BBox | None:
+    """Normalize bbox input to a BBox instance."""
+    if bbox is None:
+        return None
+
+    if isinstance(bbox, BBox):
+        return bbox
+
+    if len(bbox) != 4:
+        raise ValueError("bbox must contain exactly 4 numeric values")
+
+    return BBox(
+        xmin=float(bbox[0]),
+        ymin=float(bbox[1]),
+        xmax=float(bbox[2]),
+        ymax=float(bbox[3]),
+    )
+
+
 def _get_files_from_stac(
-    theme: str, overture_type: str, bbox: tuple, release: str
+    theme: str, overture_type: str, bbox: BBox, release: str
 ) -> Optional[List[str]]:
     """
     Returns a list of bucket/key paths using the STAC-geoparquet index
@@ -133,7 +156,7 @@ def _get_files_from_stac(
             pc.field("type") == "Feature"
         )
 
-        xmin, ymin, xmax, ymax = bbox
+        xmin, ymin, xmax, ymax = bbox.as_tuple()
         bbox_filter = (
             (pc.field("bbox", "xmin") < xmax)
             & (pc.field("bbox", "xmax") > xmin)
@@ -154,7 +177,9 @@ def _get_files_from_stac(
             ]
             return s3_paths
         else:
-            print(f"No data found for release {release} in query bbox {bbox}.")
+            print(
+                f"No data found for release {release} in query bbox {bbox.as_tuple()}."
+            )
             return []
 
     except Exception as e:
@@ -197,7 +222,12 @@ def _create_s3_record_batch_reader(
             ),
         )
 
-        batches = dataset.to_batches(filter=filter_expr)
+        batches = dataset.to_batches(
+            filter=filter_expr,
+            use_threads=True,
+            batch_readahead=16,
+            fragment_readahead=4,
+        )
 
         # Filter out empty batches to avoid downstream issues
         non_empty_batches = (b for b in batches if b.num_rows > 0)
@@ -214,7 +244,7 @@ def _create_s3_record_batch_reader(
 
 def record_batch_reader(
     overture_type,
-    bbox=None,
+    bbox: BBox | tuple[float, float, float, float] | list[float] | None = None,
     release=None,
     connect_timeout=None,
     request_timeout=None,
@@ -227,15 +257,16 @@ def record_batch_reader(
     if release is None:
         release = get_latest_release()
     path = _dataset_path(overture_type, release)
+    bbox_obj = _coerce_bbox(bbox)
 
     intersecting_files = None
-    if bbox and stac:
+    if bbox_obj and stac:
         intersecting_files = _get_files_from_stac(
-            type_theme_map[overture_type], overture_type, bbox, release
+            type_theme_map[overture_type], overture_type, bbox_obj, release
         )
 
-    if bbox:
-        xmin, ymin, xmax, ymax = bbox
+    if bbox_obj:
+        xmin, ymin, xmax, ymax = bbox_obj.as_tuple()
         filter_expr = (
             (pc.field("bbox", "xmin") < xmax)
             & (pc.field("bbox", "xmax") > xmin)
@@ -255,7 +286,7 @@ def record_batch_reader(
 
 def geodataframe(
     overture_type: str,
-    bbox: tuple[float, float, float, float] = None,
+    bbox: BBox | tuple[float, float, float, float] | list[float] | None = None,
     release: str = None,
     connect_timeout: int = None,
     request_timeout: int = None,
@@ -395,7 +426,7 @@ def _binary_search_manifest(
     return None
 
 
-def query_gers_registry(gers_id: str) -> Optional[Tuple[str, List[float]]]:
+def query_gers_registry(gers_id: str) -> Optional[Tuple[str, BBox | None]]:
     """
     Query the GERS registry to get the filepath and bbox for a given GERS ID.
 
@@ -407,7 +438,7 @@ def query_gers_registry(gers_id: str) -> Optional[Tuple[str, List[float]]]:
 
     Returns
     -------
-    Tuple of (filepath, bbox) where bbox is [xmin, ymin, xmax, ymax], or None if not found
+    Tuple of (filepath, bbox) where bbox is a BBox, or None if not found
     """
     import sys
 
@@ -484,12 +515,12 @@ def query_gers_registry(gers_id: str) -> Optional[Tuple[str, List[float]]]:
 
         # Extract bbox values if available
         if bbox_struct is not None:
-            bbox = [
-                bbox_struct["xmin"],
-                bbox_struct["ymin"],
-                bbox_struct["xmax"],
-                bbox_struct["ymax"],
-            ]
+            bbox = BBox(
+                xmin=bbox_struct["xmin"],
+                ymin=bbox_struct["ymin"],
+                xmax=bbox_struct["xmax"],
+                ymax=bbox_struct["ymax"],
+            )
         else:
             bbox = None
 
@@ -499,7 +530,7 @@ def query_gers_registry(gers_id: str) -> Optional[Tuple[str, List[float]]]:
         print(f"  Filepath: s3://{filepath}", file=sys.stderr)
         if bbox is not None:
             print(
-                f"  Bbox: [{bbox[0]:.6f}, {bbox[1]:.6f}, {bbox[2]:.6f}, {bbox[3]:.6f}]",
+                f"  Bbox: [{bbox.xmin:.6f}, {bbox.ymin:.6f}, {bbox.xmax:.6f}, {bbox.ymax:.6f}]",
                 file=sys.stderr,
             )
         else:
@@ -520,7 +551,7 @@ def record_batch_reader_from_gers(
     gers_id: str,
     connect_timeout: int = None,
     request_timeout: int = None,
-    registry_result: Optional[Tuple[str, List[float]]] = None,
+    registry_result: Optional[Tuple[str, BBox | None]] = None,
 ) -> Optional[pa.RecordBatchReader]:
     """
     Return a pyarrow RecordBatchReader for a specific GERS ID.
@@ -553,7 +584,7 @@ def record_batch_reader_from_gers(
     filter_expr = pc.field("id") == gers_id.lower()
 
     if bbox is not None:
-        xmin, ymin, xmax, ymax = bbox
+        xmin, ymin, xmax, ymax = bbox.as_tuple()
         bbox_filter = (
             (pc.field("bbox", "xmin") == xmin)
             & (pc.field("bbox", "ymin") == ymin)

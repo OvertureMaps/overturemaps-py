@@ -2,12 +2,20 @@
 name = "overturemaps"
 version = "0.19.0"
 description = "Python tools for interacting with Overture Maps (overturemaps.org) data."
-authors = [{name = "Jacob Wasserman", email = "jwasserman@meta.com"}]
+authors = [
+    {name = "Jacob Wasserman", email = "jwasserman@meta.com"}
+]
+maintainers = [
+    {name = "Adam Lastowka", email = "adam@overturemaps.org"},
+    {name = "Dana Bauer", email = "dana@overturemaps.org"},
+]
 license = "MIT"
 readme = "README.md"
 requires-python = ">=3.10"
+keywords = ["geospatial", "mapping", "GIS", "geojson", "shapely", "parquet", "opendata", "overture", "maps"]
 dependencies = [
     "click>=8.3.0",
+    "orjson>=3.9.0",
     "pyarrow>=15.0.2",
     "shapely>=2.1.0",
     # numpy is not directly imported in the codebase, but we include it as a dependency
@@ -19,6 +27,11 @@ dependencies = [
     "numpy>=1.26.4",
 ]
 
+[project.urls]
+Homepage = "https://overturemaps.org"
+Source = "https://github.com/OvertureMaps/overturemaps-py"
+Issues = "https://github.com/OvertureMaps/overturemaps-py/issues"
+
 [project.optional-dependencies]
 geopandas = ["geopandas>=1.1.0"]
 
@@ -29,6 +42,7 @@ overturemaps = "overturemaps.cli:cli"
 dev = [
     "pytest>=8.0.0",
     "pytest-mock>=3.11.0",
+    "pytest-benchmark>=5.0.0",
 ]
 
 [build-system]

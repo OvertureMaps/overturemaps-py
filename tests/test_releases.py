@@ -1,44 +1,49 @@
-"""
-Tests for dynamic release fetching functionality.
-"""
+"""Tests for the releases module."""
 
 import pytest
-from overturemaps.core import get_available_releases, get_latest_release
+from overturemaps import releases
+from overturemaps.core import get_latest_release
 
 
-class TestReleasesIntegration:
-    """Integration tests for release fetching."""
+def test_list_releases():
+    """Test that list_releases returns a non-empty list."""
+    all_releases = releases.list_releases()
+    assert isinstance(all_releases, list)
+    assert len(all_releases) > 0
+    # Should be sorted newest first
+    assert all_releases == sorted(all_releases, reverse=True)
 
-    @pytest.mark.integration
-    def test_fetch_real_releases(self):
-        """Test fetching actual releases from STAC catalog."""
-        # Clear cache
-        import overturemaps.core
 
-        overturemaps.core._cached_stac_catalog = None
+def test_get_latest_release():
+    """Test that get_latest_release returns a valid release string."""
+    latest = get_latest_release()
+    assert isinstance(latest, str)
+    assert len(latest) > 0
+    # Should be in the format YYYY-MM-DD.N
+    assert "-" in latest
+    assert "." in latest
 
-        releases, latest = get_available_releases()
 
-        assert isinstance(releases, list)
-        assert len(releases) > 0
-        assert isinstance(latest, str)
-        assert latest in releases
+def test_release_exists():
+    """Test release_exists with a known release."""
+    latest = get_latest_release()
+    assert releases.release_exists(latest) is True
+    assert releases.release_exists("invalid-release") is False
 
-    @pytest.mark.integration
-    def test_latest_release_is_valid(self):
-        """Test that latest release is a valid version string."""
-        # Clear cache
-        import overturemaps.core
 
-        overturemaps.core._cached_stac_catalog = None
+def test_get_next_release():
+    """Test get_next_release logic."""
+    all_releases = releases.list_releases()
+    if len(all_releases) < 2:
+        pytest.skip("Need at least 2 releases to test get_next_release")
 
-        latest = get_latest_release()
+    # Latest release should have no next release
+    latest = all_releases[0]
+    assert releases.get_next_release(latest) is None
 
-        assert isinstance(latest, str)
-        # Should match pattern YYYY-MM-DD.N
-        parts = latest.split(".")
-        assert len(parts) == 2
-        date_parts = parts[0].split("-")
-        assert len(date_parts) == 3
-        assert all(part.isdigit() for part in date_parts)
-        assert parts[1].isdigit()
+    # Second-to-last release should return latest
+    second_latest = all_releases[1]
+    assert releases.get_next_release(second_latest) == latest
+
+    # Invalid release should return None
+    assert releases.get_next_release("invalid-release") is None

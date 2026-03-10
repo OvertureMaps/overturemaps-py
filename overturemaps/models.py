@@ -36,6 +36,9 @@ class Backend(StrEnum):
     geojsonseq = "geojsonseq"
     geoparquet = "geoparquet"
 
+    def __str__(self) -> str:
+        return str(self.value)
+
 
 @dataclass
 class BBox:
@@ -87,7 +90,7 @@ class PipelineState:
     last_run: str  # ISO 8601 datetime string
     theme: str
     type: str
-    bbox: BBox
+    bbox: BBox | None
     backend: Backend
     output: str  # file path
 
@@ -98,7 +101,7 @@ class PipelineState:
             "last_run": self.last_run,
             "theme": self.theme,
             "type": self.type,
-            "bbox": self.bbox.as_dict(),
+            "bbox": self.bbox.as_dict() if self.bbox is not None else None,
             "backend": str(self.backend),
             "output": self.output,
         }
@@ -106,12 +109,13 @@ class PipelineState:
     @classmethod
     def from_dict(cls, data: dict) -> PipelineState:
         """Create PipelineState from a dictionary."""
+        bbox_data = data.get("bbox")
         return cls(
             last_release=data["last_release"],
             last_run=data["last_run"],
             theme=data["theme"],
             type=data["type"],
-            bbox=BBox.from_dict(data["bbox"]),
+            bbox=BBox.from_dict(bbox_data) if bbox_data is not None else None,
             backend=Backend(data["backend"]),
             output=data["output"],
         )

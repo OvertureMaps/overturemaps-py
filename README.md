@@ -81,6 +81,23 @@ If you have [uv](https://docs.astral.sh/uv/) installed, you can run overturemaps
 uvx overturemaps download --bbox=-71.068,42.353,-71.058,42.363 -f geojson --type=building -o boston.parquet
 ```
 
+## Performance
+
+Benchmarks using synthetic data on Apple M-series hardware:
+
+| Output format | Geometry | Rows | Time |
+|---|---|---|---|
+| GeoJSON | Points | 10 000 | 31 ms |
+| GeoJSON | Polygons | 10 000 | 44 ms |
+| GeoParquet | — | — | network/disk bound |
+
+To run the benchmarks locally:
+
+```bash
+uv sync --group dev
+pytest benchmarks/ -v
+```
+
 ## Development
 
 ```bash
