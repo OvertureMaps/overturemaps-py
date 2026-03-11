@@ -5,16 +5,36 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+# Compatibility shim for Python 3.10 (StrEnum was added in 3.11)
+try:
+    from enum import StrEnum
+except ImportError:
 
-class Backend(str, Enum):
+    class StrEnum(str, Enum):  # type: ignore[no-redef]
+        """String enumeration for Python < 3.11 compatibility."""
+
+        def __str__(self) -> str:
+            return str(self.value)
+
+        @staticmethod
+        def _generate_next_value_(name, start, count, last_values):
+            return name.lower()
+
+
+class ChangeType(StrEnum):
+    """Type of change recorded in the GERS changelog."""
+
+    added = "added"
+    modified = "data_changed"  # Changelog uses "data_changed"
+    removed = "removed"
+
+
+class Backend(StrEnum):
     """Storage backend for local Overture data."""
 
     geojson = "geojson"
     geojsonseq = "geojsonseq"
     geoparquet = "geoparquet"
-
-    def __str__(self) -> str:
-        return str(self.value)
 
 
 @dataclass
@@ -48,6 +68,15 @@ class BBox:
             xmax=data["xmax"],
             ymax=data["ymax"],
         )
+
+
+@dataclass
+class ChangeRecord:
+    """A single record from the Overture GERS changelog."""
+
+    id: str
+    change_type: ChangeType
+    bbox: BBox | None = None
 
 
 @dataclass
