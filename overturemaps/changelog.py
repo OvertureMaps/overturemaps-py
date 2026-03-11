@@ -177,9 +177,13 @@ def query_changelog_ids(
 
         return ids_to_add, ids_to_modify, ids_to_delete
 
-    except (FileNotFoundError, pa.ArrowIOError):
+    except FileNotFoundError:
         # If no data found (e.g., missing changelog files), return empty sets
         return set(), set(), set()
+    except Exception as e:
+        if "No such file" in str(e) or "does not exist" in str(e):
+            return set(), set(), set()
+        raise
 
 
 def summarize_changelog(
@@ -204,6 +208,8 @@ def summarize_changelog(
 
     # Determine which theme/type combinations to query
     if theme and type_:
+        if type_ not in type_theme_map:
+            raise ValueError(f"Unknown type: {type_}")
         themes_types = [(theme, type_)]
     elif theme:
         types = _get_types_for_theme(theme)
@@ -245,8 +251,10 @@ def summarize_changelog(
                 results[theme_name] = {}
             results[theme_name][type_name] = change_counts
 
+        except FileNotFoundError:
+            # This theme/type has no changelog data for this release
+            continue
         except Exception as e:
-            # If a theme/type doesn't have changelog data, skip it
             if "No such file" in str(e) or "does not exist" in str(e):
                 continue
             raise

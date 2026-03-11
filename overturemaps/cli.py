@@ -490,6 +490,8 @@ def changelog_query(bbox, theme, type_, release):
 
     # Determine which theme/type combinations to query
     if theme and type_:
+        if type_ not in type_theme_map:
+            raise click.BadParameter(f"Unknown type '{type_}'", param_hint="--type")
         themes_types = [(theme, type_)]
     elif theme:
         # Get all types for this theme
@@ -503,9 +505,7 @@ def changelog_query(bbox, theme, type_, release):
         themes_types = [(theme, type_)]
     else:
         raise click.UsageError("Must specify at least --theme or --type")
-    
-    
-    
+
     total_added = 0
     total_modified = 0
     total_deleted = 0
@@ -558,7 +558,10 @@ def changelog_summary(theme, type_, release):
     click.echo(f"Summarizing changelog for release {release}...")
     click.echo()
 
-    results = summarize_changelog(release, theme, type_)
+    try:
+        results = summarize_changelog(release, theme, type_)
+    except ValueError as e:
+        raise click.BadParameter(str(e))
 
     grand_totals = {}
 
