@@ -19,7 +19,6 @@ import io
 from typing import Optional
 from urllib.request import urlopen
 
-import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 import pyarrow.fs as fs
