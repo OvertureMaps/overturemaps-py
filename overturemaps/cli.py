@@ -25,7 +25,7 @@ from .core import (
     record_batch_reader_from_gers,
     type_theme_map,
 )
-from .models import BBox
+from .models import BBox, Backend, PipelineState
 from .changelog import query_changelog_ids, summarize_changelog
 from .state import get_state_path, save_state, load_state
 from datetime import datetime, timezone
@@ -481,13 +481,13 @@ def changelog():
 )
 def changelog_query(bbox, theme, type_, release):
     """Query changelog for changes within a bounding box.
-    
+
     Examples:
         overturemaps changelog query --bbox=-97.8,30.2,-97.6,30.4 --theme=buildings --type=building
         overturemaps changelog query --bbox=-97.8,30.2,-97.6,30.4 --theme=buildings
     """
     bbox_obj = BBox(xmin=bbox[0], ymin=bbox[1], xmax=bbox[2], ymax=bbox[3])
-    
+
     # Determine which theme/type combinations to query
     if theme and type_:
         themes_types = [(theme, type_)]
@@ -505,30 +505,30 @@ def changelog_query(bbox, theme, type_, release):
     else:
         click.echo("Error: Must specify at least --theme or --type", err=True)
         sys.exit(1)
-    
+
     total_added = 0
     total_modified = 0
     total_deleted = 0
-    
+
     click.echo(f"Querying changelog for release {release}...")
     click.echo()
-    
+
     for theme_name, type_name in themes_types:
         ids_to_add, ids_to_modify, ids_to_delete = query_changelog_ids(
             release, theme_name, type_name, bbox_obj
         )
-        
+
         total_added += len(ids_to_add)
         total_modified += len(ids_to_modify)
         total_deleted += len(ids_to_delete)
-        
+
         if len(ids_to_add) + len(ids_to_modify) + len(ids_to_delete) > 0:
             click.echo(f"{theme_name}/{type_name}:")
             click.echo(f"  Added:    {len(ids_to_add)}")
             click.echo(f"  Modified: {len(ids_to_modify)}")
             click.echo(f"  Deleted:  {len(ids_to_delete)}")
             click.echo()
-    
+
     if len(themes_types) > 1:
         click.echo("Total:")
         click.echo(f"  Added:    {total_added}")
@@ -549,7 +549,7 @@ def changelog_query(bbox, theme, type_, release):
 )
 def changelog_summary(theme, type_, release):
     """Get aggregate statistics for changelog without bbox filtering.
-    
+
     Examples:
         overturemaps changelog summary --theme=buildings
         overturemaps changelog summary --type=building
@@ -557,11 +557,11 @@ def changelog_summary(theme, type_, release):
     """
     click.echo(f"Summarizing changelog for release {release}...")
     click.echo()
-    
+
     results = summarize_changelog(release, theme, type_)
-    
+
     grand_totals = {}
-    
+
     for theme_name, types_data in results.items():
         for type_name, change_counts in types_data.items():
             click.echo(f"{theme_name}/{type_name}:")
@@ -569,11 +569,13 @@ def changelog_summary(theme, type_, release):
                 click.echo(f"  {change_type}: {count}")
                 grand_totals[change_type] = grand_totals.get(change_type, 0) + count
             click.echo()
-    
+
     if len(results) > 1 or (len(results) == 1 and len(list(results.values())[0]) > 1):
         click.echo("Grand Total:")
         for change_type, count in sorted(grand_totals.items()):
             click.echo(f"  {change_type}: {count}")
+
+
 @releases.command(name="check")
 @click.option("-o", "--output", required=True, type=click.Path(exists=True))
 @click.pass_context

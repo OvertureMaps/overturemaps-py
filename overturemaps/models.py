@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 
 # Compatibility shim for Python 3.10 (StrEnum was added in 3.11)
@@ -10,7 +10,7 @@ try:
     from enum import StrEnum
 except ImportError:
 
-    class StrEnum(str, Enum):
+    class StrEnum(str, Enum):  # type: ignore[no-redef]
         """String enumeration for Python < 3.11 compatibility."""
 
         def __str__(self) -> str:
@@ -35,9 +35,6 @@ class Backend(StrEnum):
     geojson = "geojson"
     geojsonseq = "geojsonseq"
     geoparquet = "geoparquet"
-
-    def __str__(self) -> str:
-        return str(self.value)
 
 
 @dataclass
