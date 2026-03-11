@@ -236,12 +236,14 @@ def summarize_changelog(
             # Stream in batches to avoid loading all rows into memory at once.
             # Use pc.value_counts() per batch for vectorised counting.
             change_counts: dict[str, int] = {}
-            for batch in dataset.to_batches(columns=["change_type"]):
-                if batch.num_rows == 0:
-                    continue
-                for item in pc.value_counts(batch.column("change_type")).to_pylist():
-                    ct = item["values"]
-                    change_counts[ct] = change_counts.get(ct, 0) + item["counts"]
+            # Count by change_type using efficient Arrow aggregation
+            change_counts = {}
+            if table.num_rows > 0:
+                counts_struct = pc.value_counts(table["change_type"])
+                values = counts_struct.field("values")
+                counts = counts_struct.field("counts")
+                for value, count in zip(values, counts):
+                    change_counts[value.as_py()] = count.as_py()
 
             # Build nested structure
             if theme_name not in results:
