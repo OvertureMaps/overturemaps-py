@@ -28,7 +28,9 @@ import pyarrow.parquet as pq
 from .models import BBox
 
 # S3 path template for the changelog Parquet files
-CHANGELOG_S3_PATH_TEMPLATE = "overturemaps-us-west-2/changelog/{release}/theme={theme}/type={type}/"
+CHANGELOG_S3_PATH_TEMPLATE = (
+    "overturemaps-us-west-2/changelog/{release}/theme={theme}/type={type}/"
+)
 
 
 def _get_changelog_files_from_stac(
@@ -155,9 +157,7 @@ def query_changelog_ids(
         )
 
         # Read only id and change_type columns with filter
-        table = dataset.to_table(
-            filter=spatial_filter, columns=["id", "change_type"]
-        )
+        table = dataset.to_table(filter=spatial_filter, columns=["id", "change_type"])
 
         # Group IDs by change_type
         ids_to_add: set[str] = set()
@@ -233,15 +233,15 @@ def summarize_changelog(
                 partitioning="hive",
             )
 
-            # Read only change_type column
-            table = dataset.to_table(columns=["change_type"])
-
-            # Count by change_type
-            change_counts = {}
-            if table.num_rows > 0:
-                change_types = table.column("change_type").to_pylist()
-                for ct in set(change_types):
-                    change_counts[ct] = change_types.count(ct)
+            # Stream in batches to avoid loading all rows into memory at once.
+            # Use pc.value_counts() per batch for vectorised counting.
+            change_counts: dict[str, int] = {}
+            for batch in dataset.to_batches(columns=["change_type"]):
+                if batch.num_rows == 0:
+                    continue
+                for item in pc.value_counts(batch.column("change_type")).to_pylist():
+                    ct = item["values"]
+                    change_counts[ct] = change_counts.get(ct, 0) + item["counts"]
 
             # Build nested structure
             if theme_name not in results:

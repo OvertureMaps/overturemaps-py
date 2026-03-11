@@ -18,6 +18,23 @@ def list_releases() -> list[str]:
     return sorted(releases, reverse=True)
 
 
+def get_latest_release() -> str:
+    """Return the ID of the most recent Overture Maps release.
+
+    Uses the STAC catalog for efficient retrieval.
+
+    Returns:
+        Latest release ID string.
+
+    Raises:
+        RuntimeError: If no releases are found.
+    """
+    releases, latest = get_available_releases()
+    if not latest and not releases:
+        raise RuntimeError("No Overture Maps releases found.")
+    return latest or releases[0]
+
+
 def release_exists(release: str) -> bool:
     """Check whether a given release ID exists.
 
@@ -30,7 +47,8 @@ def release_exists(release: str) -> bool:
         True if the release exists, False otherwise.
     """
     try:
-        return release in list_releases()
+        releases, _ = get_available_releases()
+        return release in releases
     except Exception:
         return False
 
