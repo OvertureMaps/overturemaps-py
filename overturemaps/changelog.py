@@ -177,11 +177,9 @@ def query_changelog_ids(
 
         return ids_to_add, ids_to_modify, ids_to_delete
 
-    except Exception as e:
-        # If no data found, return empty sets
-        if "No such file" in str(e) or "does not exist" in str(e):
-            return set(), set(), set()
-        raise
+    except (FileNotFoundError, pa.ArrowIOError):
+        # If no data found (e.g., missing changelog files), return empty sets
+        return set(), set(), set()
 
 
 def summarize_changelog(
