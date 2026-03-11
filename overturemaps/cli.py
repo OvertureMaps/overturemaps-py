@@ -498,14 +498,14 @@ def changelog_query(bbox, theme, type_, release):
     elif type_:
         # Get theme for this type
         if type_ not in type_theme_map:
-            click.echo(f"Error: Unknown type '{type_}'", err=True)
-            sys.exit(1)
+            raise click.BadParameter(f"Unknown type '{type_}'", param_hint="type")
         theme = type_theme_map[type_]
         themes_types = [(theme, type_)]
     else:
-        click.echo("Error: Must specify at least --theme or --type", err=True)
-        sys.exit(1)
-
+        raise click.UsageError("Must specify at least --theme or --type")
+    
+    
+    
     total_added = 0
     total_modified = 0
     total_deleted = 0
