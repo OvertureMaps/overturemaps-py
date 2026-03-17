@@ -1,2 +1,5 @@
 # Default owners for everything in the repo
 * @overturemaps/omf-public-reviewers
+
+# GitHub Actions, workflows, and repo configuration
+/.github/** @lowlydba @overturemaps/omf-public-reviewers
