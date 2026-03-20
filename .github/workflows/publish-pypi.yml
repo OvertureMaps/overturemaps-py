@@ -21,7 +21,6 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          version-file: pyproject.toml
 
       - name: Build package
         run: uv build
@@ -35,7 +34,7 @@ jobs:
   publish:
     name: Target '${{ github.event_name == 'workflow_dispatch' && 'Test PyPI' || 'PyPI' }}'
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     environment: ${{ github.event_name == 'workflow_dispatch' && 'test-pypi' || 'pypi' }}
     env:
       TEST_PYPI_URL: https://test.pypi.org/legacy/
