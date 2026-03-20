@@ -34,7 +34,7 @@ jobs:
   publish:
     name: Target '${{ github.event_name == 'workflow_dispatch' && 'Test PyPI' || 'PyPI' }}'
     needs: build
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     environment: ${{ github.event_name == 'workflow_dispatch' && 'test-pypi' || 'pypi' }}
     env:
       TEST_PYPI_URL: https://test.pypi.org/legacy/
