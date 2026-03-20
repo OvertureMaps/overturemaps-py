@@ -11,12 +11,14 @@ import json
 import os
 import sys
 import uuid
+from datetime import datetime, timezone
 
 import click
 import orjson
 import pyarrow.parquet as pq
 import shapely
 
+from .changelog import query_changelog_ids, summarize_changelog
 from .core import (
     get_all_overture_types,
     get_available_releases,
@@ -25,10 +27,9 @@ from .core import (
     record_batch_reader_from_gers,
     type_theme_map,
 )
-from .models import BBox, Backend, PipelineState
-from .state import get_state_path, save_state, load_state
-from datetime import datetime, timezone
+from .models import Backend, BBox, PipelineState
 from .releases import list_releases, release_exists
+from .state import get_state_path, load_state, save_state
 
 
 def get_writer(output_format, path, schema):
@@ -458,6 +459,126 @@ def releases_latest():
     """Show the latest Overture Maps release."""
     latest = get_latest_release()
     click.echo(latest)
+
+
+@cli.group()
+def changelog():
+    """Query the GERS changelog for feature changes."""
+    pass
+
+
+@changelog.command(name="query")
+@click.option("--bbox", required=True, type=BboxParamType())
+@click.option("--theme", required=False, type=str)
+@click.option("--type", "type_", required=False, type=str)
+@click.option(
+    "-r",
+    "--release",
+    default=None,
+    callback=validate_release,
+    required=False,
+    help="Release version (defaults to latest)",
+)
+def changelog_query(bbox, theme, type_, release):
+    """Query changelog for changes within a bounding box.
+
+    Examples:
+        overturemaps changelog query --bbox=-97.8,30.2,-97.6,30.4 --theme=buildings --type=building
+        overturemaps changelog query --bbox=-97.8,30.2,-97.6,30.4 --theme=buildings
+    """
+    bbox_obj = BBox(xmin=bbox[0], ymin=bbox[1], xmax=bbox[2], ymax=bbox[3])
+
+    # Determine which theme/type combinations to query
+    if theme and type_:
+        if type_ not in type_theme_map:
+            raise click.BadParameter(f"Unknown type '{type_}'", param_hint="--type")
+        themes_types = [(theme, type_)]
+    elif theme:
+        # Get all types for this theme
+        types = [t for t, th in type_theme_map.items() if th == theme]
+        themes_types = [(theme, t) for t in types]
+    elif type_:
+        # Get theme for this type
+        if type_ not in type_theme_map:
+            raise click.BadParameter(f"Unknown type '{type_}'", param_hint="type")
+        theme = type_theme_map[type_]
+        themes_types = [(theme, type_)]
+    else:
+        raise click.UsageError("Must specify at least --theme or --type")
+
+    total_added = 0
+    total_modified = 0
+    total_deleted = 0
+
+    click.echo(f"Querying changelog for release {release}...")
+    click.echo()
+
+    for theme_name, type_name in themes_types:
+        changes = query_changelog_ids(release, theme_name, type_name, bbox_obj)
+
+        added = len(changes.get("added", set()))
+        modified = len(changes.get("data_changed", set()))
+        deleted = len(changes.get("removed", set()))
+
+        total_added += added
+        total_modified += modified
+        total_deleted += deleted
+
+        if added + modified + deleted > 0:
+            click.echo(f"{theme_name}/{type_name}:")
+            click.echo(f"  Added:    {added}")
+            click.echo(f"  Modified: {modified}")
+            click.echo(f"  Deleted:  {deleted}")
+            click.echo()
+
+    if len(themes_types) > 1:
+        click.echo("Total:")
+        click.echo(f"  Added:    {total_added}")
+        click.echo(f"  Modified: {total_modified}")
+        click.echo(f"  Deleted:  {total_deleted}")
+
+
+@changelog.command(name="summary")
+@click.option("--theme", required=False, type=str)
+@click.option("--type", "type_", required=False, type=str)
+@click.option(
+    "-r",
+    "--release",
+    default=None,
+    callback=validate_release,
+    required=False,
+    help="Release version (defaults to latest)",
+)
+def changelog_summary(theme, type_, release):
+    """Get aggregate statistics for changelog without bbox filtering.
+
+    Examples:
+        overturemaps changelog summary --theme=buildings
+        overturemaps changelog summary --type=building
+        overturemaps changelog summary  # All themes/types
+    """
+    click.echo(f"Summarizing changelog for release {release}...")
+    click.echo()
+
+    try:
+        results = summarize_changelog(release, theme, type_)
+    except ValueError as e:
+        raise click.BadParameter(str(e))
+
+    grand_totals = {}
+
+    for theme_name, types_data in results.items():
+        for type_name, change_counts in types_data.items():
+            click.echo(f"{theme_name}/{type_name}:")
+            for change_type, count in sorted(change_counts.items()):
+                click.echo(f"  {change_type}: {count}")
+                grand_totals[change_type] = grand_totals.get(change_type, 0) + count
+            click.echo()
+
+    if len(results) > 1 or (len(results) == 1 and len(list(results.values())[0]) > 1):
+        click.echo("Grand Total:")
+        for change_type, count in sorted(grand_totals.items()):
+            click.echo(f"  {change_type}: {count}")
 
 
 @releases.command(name="check")
