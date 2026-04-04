@@ -11,6 +11,7 @@ import json
 import os
 import sys
 import uuid
+from datetime import datetime, timezone
 
 import click
 import orjson
@@ -18,15 +19,19 @@ import pyarrow.parquet as pq
 import shapely
 from tqdm import tqdm
 
+from .changelog import query_changelog_ids, summarize_changelog
 from .core import (
     get_all_overture_types,
     get_available_releases,
     get_latest_release,
     record_batch_reader,
     record_batch_reader_from_gers,
+    type_theme_map,
     count_rows,
 )
+from .models import Backend, BBox, PipelineState
 from .releases import list_releases, release_exists
+from .state import get_state_path, load_state, save_state
 
 
 def get_writer(output_format, path, schema):
@@ -68,19 +73,62 @@ def get_writer(output_format, path, schema):
     return writer
 
 
+# Earth's total surface area in square degrees (360 * 180).
+EARTH_AREA_SQ_DEG = 64800
+# Threshold (fraction of Earth) above which we warn about a large bbox.
+LARGE_BBOX_THRESHOLD = 0.01  # 1% of Earth
+
+
+def _bbox_area_sq_deg(xmin: float, ymin: float, xmax: float, ymax: float) -> float:
+    """Return the area of a lon/lat bbox in square degrees."""
+    return abs(xmax - xmin) * abs(ymax - ymin)
+
+
 class BboxParamType(click.ParamType):
     name = "bbox"
 
     def convert(self, value, param, ctx):
-        try:
-            bbox = [float(x.strip()) for x in value.split(",")]
-            fail = False
-        except ValueError:  # ValueError raised when passing non-numbers to float()
-            fail = True
-
-        if fail or len(bbox) != 4:
+        parts = value.split(",")
+        if len(parts) != 4:
             self.fail(
-                f"bbox must be 4 floating point numbers separated by commas. Got '{value}'"
+                f"bbox requires exactly 4 values (xmin,ymin,xmax,ymax), "
+                f"got {len(parts)}. Example: --bbox -71.10,42.34,-71.05,42.36"
+            )
+
+        try:
+            bbox = [float(x.strip()) for x in parts]
+        except ValueError:
+            self.fail(
+                f"All bbox values must be numbers. Got '{value}'. "
+                f"Example: --bbox -71.10,42.34,-71.05,42.36"
+            )
+
+        xmin, ymin, xmax, ymax = bbox
+
+        # Validate longitude range
+        if not (-180 <= xmin <= 180 and -180 <= xmax <= 180):
+            self.fail(
+                f"Longitude values must be between -180 and 180. "
+                f"Got xmin={xmin}, xmax={xmax}"
+            )
+
+        # Validate latitude range
+        if not (-90 <= ymin <= 90 and -90 <= ymax <= 90):
+            self.fail(
+                f"Latitude values must be between -90 and 90. "
+                f"Got ymin={ymin}, ymax={ymax}"
+            )
+
+        # Check for swapped min/max
+        if xmin > xmax:
+            self.fail(
+                f"xmin ({xmin}) must be less than or equal to xmax ({xmax}). "
+                f"bbox format is: xmin,ymin,xmax,ymax"
+            )
+        if ymin > ymax:
+            self.fail(
+                f"ymin ({ymin}) must be less than or equal to ymax ({ymax}). "
+                f"bbox format is: xmin,ymin,xmax,ymax"
             )
 
         return bbox
@@ -152,20 +200,44 @@ def cli():
     type=bool,
     is_flag=True,
     default=True,
-    help="If set, directly read from the dataset path instead of using the STAC-geoparquet index.",
+    help="By default, uses the STAC catalog to limit which Parquet files are downloaded. Pass --no-stac to skip the catalog and read the full S3 dataset directly.",
 )
 @click.option("--connect_timeout", required=False, type=int)
 @click.option("--request_timeout", required=False, type=int)
 def download(
     bbox, output_format, output, type_, release, connect_timeout, request_timeout, stac
 ):
+    # Warn when no bbox is provided
+    if bbox is None:
+        click.echo(
+            "Warning: No bounding box provided. Downloading the entire dataset "
+            "for this type. The full Overture dataset is approximately "
+            "1.2 TB as GeoJSON and 400 GB as GeoParquet.",
+            err=True,
+        )
+    else:
+        # Warn if the bbox covers a large area
+        area = _bbox_area_sq_deg(bbox[0], bbox[1], bbox[2], bbox[3])
+        fraction = area / EARTH_AREA_SQ_DEG
+        if fraction >= LARGE_BBOX_THRESHOLD:
+            pct = fraction * 100
+            click.echo(
+                f"Warning: The bounding box covers ~{pct:.1f}% of Earth's surface. "
+                f"This may take a long time and use significant bandwidth. "
+                f"The full Overture dataset is approximately "
+                f"1.2 TB as GeoJSON and 400 GB as GeoParquet.",
+                err=True,
+            )
+
     if output_format == "geoparquet" and output is None:
         raise click.UsageError(
             "Output file (-o/--output) is required when using geoparquet format"
         )
 
     if output is None:
-        output = sys.stdout
+        output_file = sys.stdout
+    else:
+        output_file = output
 
     total = count_rows(type_, bbox, release, connect_timeout, request_timeout, stac)
 
@@ -176,8 +248,40 @@ def download(
     if reader is None:
         return
 
-    with get_writer(output_format, output, schema=reader.schema) as writer:
+    with get_writer(output_format, output_file, schema=reader.schema) as writer:
         copy(reader, writer, total=total)
+
+    # Save state file if output was written to a file
+    if output is not None:
+        output_path = os.path.abspath(os.path.expanduser(output))
+
+        # Determine backend from output format
+        backend = Backend(output_format)
+
+        # Get theme from type
+        theme = type_theme_map.get(type_)
+        if theme is None:
+            click.echo(f"Warning: Could not determine theme for type {type_}", err=True)
+            return
+
+        # Create and save state
+        state = PipelineState(
+            last_release=release,
+            last_run=datetime.now(timezone.utc).isoformat(),
+            theme=theme,
+            type=type_,
+            bbox=(
+                BBox(xmin=bbox[0], ymin=bbox[1], xmax=bbox[2], ymax=bbox[3])
+                if bbox is not None
+                else None
+            ),
+            backend=backend,
+            output=output_path,
+        )
+
+        state_path = get_state_path(output)
+        save_state(state, state_path)
+        click.echo(f"State saved to {state_path}", err=True)
 
 
 @cli.command()
@@ -193,7 +297,8 @@ def download(
 @click.option("-o", "--output", required=False, type=click.Path())
 @click.option("--connect_timeout", required=False, type=int)
 @click.option("--request_timeout", required=False, type=int)
-def gers(gers_id, output_format, output, connect_timeout, request_timeout):
+@click.pass_context
+def gers(ctx, gers_id, output_format, output, connect_timeout, request_timeout):
     """
     Query the GERS registry for a feature by its GERS ID.
 
@@ -210,7 +315,7 @@ def gers(gers_id, output_format, output, connect_timeout, request_timeout):
 
     if result is None:
         # Error message already printed by query_gers_registry
-        sys.exit(1)
+        ctx.exit(1)
 
     # If no format specified, we're done - just show the registry info
     if output_format is None:
@@ -237,7 +342,7 @@ def gers(gers_id, output_format, output, connect_timeout, request_timeout):
             f"Could not fetch feature data for GERS ID '{gers_id}'",
             err=True,
         )
-        sys.exit(1)
+        ctx.exit(1)
 
     with get_writer(output_format, output, schema=reader.schema) as writer:
         copy(reader, writer)
@@ -360,6 +465,152 @@ def releases_latest():
     """Show the latest Overture Maps release."""
     latest = get_latest_release()
     click.echo(latest)
+
+
+@cli.group()
+def changelog():
+    """Query the GERS changelog for feature changes."""
+    pass
+
+
+@changelog.command(name="query")
+@click.option("--bbox", required=True, type=BboxParamType())
+@click.option("--theme", required=False, type=str)
+@click.option("--type", "type_", required=False, type=str)
+@click.option(
+    "-r",
+    "--release",
+    default=None,
+    callback=validate_release,
+    required=False,
+    help="Release version (defaults to latest)",
+)
+def changelog_query(bbox, theme, type_, release):
+    """Query changelog for changes within a bounding box.
+
+    Examples:
+        overturemaps changelog query --bbox=-97.8,30.2,-97.6,30.4 --theme=buildings --type=building
+        overturemaps changelog query --bbox=-97.8,30.2,-97.6,30.4 --theme=buildings
+    """
+    bbox_obj = BBox(xmin=bbox[0], ymin=bbox[1], xmax=bbox[2], ymax=bbox[3])
+
+    # Determine which theme/type combinations to query
+    if theme and type_:
+        if type_ not in type_theme_map:
+            raise click.BadParameter(f"Unknown type '{type_}'", param_hint="--type")
+        themes_types = [(theme, type_)]
+    elif theme:
+        # Get all types for this theme
+        types = [t for t, th in type_theme_map.items() if th == theme]
+        themes_types = [(theme, t) for t in types]
+    elif type_:
+        # Get theme for this type
+        if type_ not in type_theme_map:
+            raise click.BadParameter(f"Unknown type '{type_}'", param_hint="type")
+        theme = type_theme_map[type_]
+        themes_types = [(theme, type_)]
+    else:
+        raise click.UsageError("Must specify at least --theme or --type")
+
+    total_added = 0
+    total_modified = 0
+    total_deleted = 0
+
+    click.echo(f"Querying changelog for release {release}...")
+    click.echo()
+
+    for theme_name, type_name in themes_types:
+        changes = query_changelog_ids(release, theme_name, type_name, bbox_obj)
+
+        added = len(changes.get("added", set()))
+        modified = len(changes.get("data_changed", set()))
+        deleted = len(changes.get("removed", set()))
+
+        total_added += added
+        total_modified += modified
+        total_deleted += deleted
+
+        if added + modified + deleted > 0:
+            click.echo(f"{theme_name}/{type_name}:")
+            click.echo(f"  Added:    {added}")
+            click.echo(f"  Modified: {modified}")
+            click.echo(f"  Deleted:  {deleted}")
+            click.echo()
+
+    if len(themes_types) > 1:
+        click.echo("Total:")
+        click.echo(f"  Added:    {total_added}")
+        click.echo(f"  Modified: {total_modified}")
+        click.echo(f"  Deleted:  {total_deleted}")
+
+
+@changelog.command(name="summary")
+@click.option("--theme", required=False, type=str)
+@click.option("--type", "type_", required=False, type=str)
+@click.option(
+    "-r",
+    "--release",
+    default=None,
+    callback=validate_release,
+    required=False,
+    help="Release version (defaults to latest)",
+)
+def changelog_summary(theme, type_, release):
+    """Get aggregate statistics for changelog without bbox filtering.
+
+    Examples:
+        overturemaps changelog summary --theme=buildings
+        overturemaps changelog summary --type=building
+        overturemaps changelog summary  # All themes/types
+    """
+    click.echo(f"Summarizing changelog for release {release}...")
+    click.echo()
+
+    try:
+        results = summarize_changelog(release, theme, type_)
+    except ValueError as e:
+        raise click.BadParameter(str(e))
+
+    grand_totals = {}
+
+    for theme_name, types_data in results.items():
+        for type_name, change_counts in types_data.items():
+            click.echo(f"{theme_name}/{type_name}:")
+            for change_type, count in sorted(change_counts.items()):
+                click.echo(f"  {change_type}: {count}")
+                grand_totals[change_type] = grand_totals.get(change_type, 0) + count
+            click.echo()
+
+    if len(results) > 1 or (len(results) == 1 and len(list(results.values())[0]) > 1):
+        click.echo("Grand Total:")
+        for change_type, count in sorted(grand_totals.items()):
+            click.echo(f"  {change_type}: {count}")
+
+
+@releases.command(name="check")
+@click.option("-o", "--output", required=True, type=click.Path(exists=True))
+@click.pass_context
+def releases_check(ctx, output):
+    """Check if a local file is up to date with the latest release."""
+    state_path = get_state_path(output)
+    state = load_state(state_path)
+
+    if state is None:
+        click.echo(f"No state file found at {state_path}", err=True)
+        click.echo("Cannot determine current release version.", err=True)
+        ctx.exit(1)
+
+    latest = get_latest_release()
+
+    click.echo(f"Current release: {state.last_release}")
+    click.echo(f"Latest release:  {latest}")
+
+    if state.last_release == latest:
+        click.echo("✓ Up to date")
+        ctx.exit(0)
+    else:
+        click.echo("✗ Update available")
+        ctx.exit(1)
 
 
 @releases.command(name="exists")
