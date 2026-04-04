@@ -1,5 +1,6 @@
 import io
 import json
+import sys
 from typing import List, Optional, Tuple
 from urllib.request import urlopen
 
@@ -231,11 +232,12 @@ def _prepare_query(
     connect_timeout=None,
     request_timeout=None,
     stac=False,
-) -> Tuple[ds.Dataset, Optional[pc.Expression]]:
+) -> Optional[Tuple[ds.Dataset, Optional[pc.Expression]]]:
     """
     Resolve the S3 dataset and filter expression for a given query.
 
-    Returns the dataset and filter expression ready for counting or streaming.
+    Returns the dataset and filter expression ready for counting or streaming,
+    or None if STAC reports no files intersect the bbox.
     """
     if release is None:
         release = get_latest_release()
@@ -247,6 +249,8 @@ def _prepare_query(
         intersecting_files = _get_files_from_stac(
             type_theme_map[overture_type], overture_type, bbox_obj, release
         )
+        if intersecting_files is not None and len(intersecting_files) == 0:
+            return None
 
     if bbox_obj:
         xmin, ymin, xmax, ymax = bbox_obj.as_tuple()
@@ -260,7 +264,7 @@ def _prepare_query(
         filter_expr = None
 
     dataset = ds.dataset(
-        intersecting_files if intersecting_files else path,
+        intersecting_files if intersecting_files is not None else path,
         filesystem=fs.S3FileSystem(
             anonymous=True,
             region="us-west-2",
@@ -281,9 +285,12 @@ def count_rows(
     stac=False,
 ) -> int:
     """Return the number of rows matching the given parameters."""
-    dataset, filter_expr = _prepare_query(
+    result = _prepare_query(
         overture_type, bbox, release, connect_timeout, request_timeout, stac
     )
+    if result is None:
+        return 0
+    dataset, filter_expr = result
     return dataset.count_rows(filter=filter_expr)
 
 
@@ -297,9 +304,12 @@ def record_batch_reader(
     stac=False,
 ) -> Optional[pa.RecordBatchReader]:
     """Return a pyarrow RecordBatchReader for the desired bounding box and s3 path, or None on error."""
-    dataset, filter_expr = _prepare_query(
+    result = _prepare_query(
         overture_type, bbox, release, connect_timeout, request_timeout, stac
     )
+    if result is None:
+        return None
+    dataset, filter_expr = result
     return _record_batch_reader_from_dataset(dataset, filter_expr=filter_expr)
 
 
@@ -612,13 +622,17 @@ def record_batch_reader_from_gers(
         )
         filter_expr = filter_expr & bbox_filter
 
-    dataset = ds.dataset(
-        filepath,
-        filesystem=fs.S3FileSystem(
-            anonymous=True,
-            region="us-west-2",
-            connect_timeout=connect_timeout,
-            request_timeout=request_timeout,
-        ),
-    )
+    try:
+        dataset = ds.dataset(
+            filepath,
+            filesystem=fs.S3FileSystem(
+                anonymous=True,
+                region="us-west-2",
+                connect_timeout=connect_timeout,
+                request_timeout=request_timeout,
+            ),
+        )
+    except Exception as e:
+        print(f"Error opening dataset for GERS ID '{gers_id}': {e}", file=sys.stderr)
+        return None
     return _record_batch_reader_from_dataset(dataset, filter_expr=filter_expr)
