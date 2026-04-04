@@ -27,7 +27,6 @@ from .core import (
     record_batch_reader,
     record_batch_reader_from_gers,
     type_theme_map,
-    count_rows,
 )
 from .models import Backend, BBox, PipelineState
 from .releases import list_releases, release_exists
@@ -239,8 +238,6 @@ def download(
     else:
         output_file = output
 
-    total = count_rows(type_, bbox, release, connect_timeout, request_timeout, stac)
-
     reader = record_batch_reader(
         type_, bbox, release, connect_timeout, request_timeout, stac
     )
@@ -249,7 +246,7 @@ def download(
         return
 
     with get_writer(output_format, output_file, schema=reader.schema) as writer:
-        copy(reader, writer, total=total)
+        copy(reader, writer)
 
     # Save state file if output was written to a file
     if output is not None:
@@ -348,8 +345,8 @@ def gers(ctx, gers_id, output_format, output, connect_timeout, request_timeout):
         copy(reader, writer)
 
 
-def copy(reader, writer, total=None):
-    with tqdm(total=total, unit="rows", desc="Downloading", file=sys.stderr) as bar:
+def copy(reader, writer):
+    with tqdm(total=None, unit=" rows", desc="Downloading", file=sys.stderr) as bar:
         while True:
             try:
                 batch = reader.read_next_batch()

@@ -287,6 +287,7 @@ def count_rows(
     return dataset.count_rows(filter=filter_expr)
 
 
+
 def record_batch_reader(
     overture_type,
     bbox=None,
