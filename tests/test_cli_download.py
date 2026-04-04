@@ -30,6 +30,7 @@ def test_download_saves_absolute_output_path(monkeypatch):
     captured = {}
 
     monkeypatch.setattr("overturemaps.cli.get_latest_release", lambda: "2024-11-13.0")
+    monkeypatch.setattr("overturemaps.cli.count_rows", lambda *args, **kwargs: 0)
     monkeypatch.setattr(
         "overturemaps.cli.record_batch_reader", lambda *args, **kwargs: _DummyReader()
     )
@@ -142,6 +143,7 @@ def test_bbox_area_sq_deg():
 def test_download_warns_on_large_bbox(monkeypatch):
     """download should warn when bbox is very large."""
     monkeypatch.setattr("overturemaps.cli.get_latest_release", lambda: "2024-11-13.0")
+    monkeypatch.setattr("overturemaps.cli.count_rows", lambda *args, **kwargs: 0)
     monkeypatch.setattr(
         "overturemaps.cli.record_batch_reader", lambda *args, **kwargs: _DummyReader()
     )
@@ -172,6 +174,7 @@ def test_download_warns_on_large_bbox(monkeypatch):
 def test_download_warns_on_no_bbox(monkeypatch):
     """download should warn when no bbox is provided."""
     monkeypatch.setattr("overturemaps.cli.get_latest_release", lambda: "2024-11-13.0")
+    monkeypatch.setattr("overturemaps.cli.count_rows", lambda *args, **kwargs: 0)
     monkeypatch.setattr(
         "overturemaps.cli.record_batch_reader", lambda *args, **kwargs: _DummyReader()
     )
@@ -200,6 +203,7 @@ def test_download_warns_on_no_bbox(monkeypatch):
 def test_download_no_warning_on_small_bbox(monkeypatch):
     """download should not warn when bbox is small."""
     monkeypatch.setattr("overturemaps.cli.get_latest_release", lambda: "2024-11-13.0")
+    monkeypatch.setattr("overturemaps.cli.count_rows", lambda *args, **kwargs: 0)
     monkeypatch.setattr(
         "overturemaps.cli.record_batch_reader", lambda *args, **kwargs: _DummyReader()
     )
