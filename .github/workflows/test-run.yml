@@ -51,4 +51,4 @@ jobs:
     steps:
       - uses: lowlydba/are-we-good@98d5377c7f82a14da7abf548a8cd3de01b163556 # v1.0.1
         with:
-          needs-context: ${{ toJSON(needs) }}
+          jobs: ${{ toJSON(needs) }}
