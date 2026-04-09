@@ -14,6 +14,7 @@ The package is published to [PyPI](https://pypi.org/project/overturemaps/) via t
 2. Commit and merge to `main`.
 3. Create a GitHub Release (tag + title + notes). Publishing the release triggers the workflow automatically.
 4. The workflow builds the package and publishes to PyPI in the [`pypi` GitHub environment](https://github.com/OvertureMaps/overturemaps-py/deployments).
+5. After the release, open a PR in [homebrew-core](https://github.com/Homebrew/homebrew-core) to bump the formula version.
 
 ### Dry-run / Test PyPI
 
