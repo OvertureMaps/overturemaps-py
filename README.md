@@ -63,7 +63,13 @@ Command-line options:
 
 ## Installation
 
-To install overturemaps from [PyPi](https://pypi.org/project/overturemaps/) using pip
+overturemaps is available via [Homebrew](https://brew.sh/):
+
+```bash
+brew install overturemaps
+```
+
+To install overturemaps from [PyPi](https://pypi.org/project/overturemaps/) using pip:
 
 ```bash
 pip install overturemaps
