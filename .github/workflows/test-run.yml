@@ -49,6 +49,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions: {}
     steps:
-      - uses: lowlydba/are-we-good@98d5377c7f82a14da7abf548a8cd3de01b163556 # v1.0.1
+      - uses: lowlydba/are-we-good@7efad05442f92a1203940ca8b79dd4fb930e75d4 # v1.0.2
         with:
           jobs: ${{ toJSON(needs) }}
