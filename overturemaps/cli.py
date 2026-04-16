@@ -17,6 +17,7 @@ import click
 import orjson
 import pyarrow.parquet as pq
 import shapely
+from tqdm import tqdm
 
 from .changelog import query_changelog_ids, summarize_changelog
 from .core import (
@@ -345,13 +346,15 @@ def gers(ctx, gers_id, output_format, output, connect_timeout, request_timeout):
 
 
 def copy(reader, writer):
-    while True:
-        try:
-            batch = reader.read_next_batch()
-        except StopIteration:
-            break
-        if batch.num_rows > 0:
-            writer.write_batch(batch)
+    with tqdm(total=None, unit=" rows", desc="Downloading", file=sys.stderr) as bar:
+        while True:
+            try:
+                batch = reader.read_next_batch()
+            except StopIteration:
+                break
+            if batch.num_rows > 0:
+                writer.write_batch(batch)
+                bar.update(batch.num_rows)
 
 
 class BaseGeoJSONWriter:
