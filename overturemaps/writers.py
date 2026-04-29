@@ -110,10 +110,14 @@ class BaseGeoJSONWriter:
             self.write_feature(geom_str, row)
 
     def write_feature(self, geom_str, props):
-        pass
+        raise NotImplementedError(
+            f"{self.__class__.__name__}.write_feature() must be implemented by subclasses"
+        )
 
     def finalize(self):
-        pass
+        raise NotImplementedError(
+            f"{self.__class__.__name__}.finalize() must be implemented by subclasses"
+        )
 
 
 class GeoJSONSeqWriter(BaseGeoJSONWriter):
