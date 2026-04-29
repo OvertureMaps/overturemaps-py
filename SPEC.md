@@ -1,6 +1,6 @@
 # overturemaps-py — Project Specification
 
-**Version**: 0.20.0
+**Version**: 0.21.0
 **Python**: ≥ 3.10
 **License**: MIT
 **Maintainers**: Adam Lastowka, Dana Bauer (@overturemaps.org)
