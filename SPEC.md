@@ -128,7 +128,7 @@ Persisted as JSON sidecar beside output files.
 Exported from `overturemaps.__init__`:
 
 ```python
-from overturemaps import record_batch_reader, get_all_overture_types
+from overturemaps import geodataframe, record_batch_reader, get_all_overture_types
 ```
 
 ### 4.1 `record_batch_reader`
