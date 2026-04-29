@@ -1,6 +1,6 @@
 """Tests for the copy() function."""
 
-from overturemaps.cli import copy
+from overturemaps.writers import copy
 
 
 class _FakeBatch:

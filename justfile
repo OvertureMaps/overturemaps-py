@@ -1,6 +1,8 @@
 #!/usr/bin/env just --justfile
 
-latest_release := `curl -s https://stac.overturemaps.org | jq -r '.latest'`
+set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
+
+latest_release := "curl -s https://stac.overturemaps.org | jq -r '.latest'"
 
 @_default:
     {{ just_executable() }} --list
@@ -27,8 +29,8 @@ smoke-test:
         --bbox=-71.068,42.353,-71.058,42.363 \
         -f geojson \
         --type=building \
-        -o /tmp/boston-smoke.geojson
-    @echo "Output written to /tmp/boston-smoke.geojson"
+        -o boston-smoke.geojson
+    @echo "Output written to boston-smoke.geojson"
 
 # Run a smoke test for a given type (default: building)
 [group('test')]
@@ -38,8 +40,8 @@ smoke-test-type type='building':
         --bbox=-71.068,42.353,-71.058,42.363 \
         -f geojson \
         --type={{ type }} \
-        -o /tmp/boston-{{ type }}.geojson
-    @echo "Output written to /tmp/boston-{{ type }}.geojson"
+        -o boston-{{ type }}.geojson
+    @echo "Output written to boston-{{ type }}.geojson"
 
 # Show the latest Overture release
 [group('release')]
@@ -50,6 +52,18 @@ latest:
 [group('release')]
 releases:
     uv run overturemaps releases list
+
+# Build standalone binary for the current platform
+[group('build')]
+build-binary:
+    uv sync --group binary
+    uv run pyinstaller \
+        --onefile \
+        --name overturemaps \
+        --collect-all pyarrow \
+        --collect-all shapely \
+        --collect-data pyfiglet \
+        overturemaps/__main__.py
 
 # Build the package
 [group('build')]

@@ -227,3 +227,31 @@ def test_download_no_warning_on_small_bbox(monkeypatch):
     )
     assert result.exit_code == 0
     assert "Warning" not in result.output
+
+
+def test_download_invalid_release_explains_retention_policy(monkeypatch):
+    """download --release with an old release should explain the retention policy."""
+    monkeypatch.setattr(
+        "overturemaps.cli.get_available_releases",
+        lambda: (["2026-03-18.0", "2026-02-18.0"], "2026-03-18.0"),
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "download",
+            "-f",
+            "geojson",
+            "-t",
+            "building",
+            "--release",
+            "2024-07-22.0",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "no longer available" in result.output
+    assert "GDPR" in result.output
+    assert "60 days" in result.output
+    assert "2026-03-18.0" in result.output
+    assert "docs.overturemaps.org/release-calendar" in result.output

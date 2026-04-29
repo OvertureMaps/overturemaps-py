@@ -7,17 +7,12 @@ in a specified bounding box in a few different file formats.
 """
 
 import importlib.metadata
-import json
 import os
 import sys
 import uuid
 from datetime import datetime, timezone
 
 import click
-import orjson
-import pyarrow.parquet as pq
-import shapely
-from tqdm import tqdm
 
 from .changelog import query_changelog_ids, summarize_changelog
 from .core import (
@@ -31,51 +26,24 @@ from .core import (
 from .models import Backend, BBox, PipelineState
 from .releases import list_releases, release_exists
 from .state import get_state_path, load_state, save_state
-
-
-def get_writer(output_format, path, schema):
-    if output_format == "geojson":
-        writer = GeoJSONWriter(path)
-    elif output_format == "geojsonseq":
-        writer = GeoJSONSeqWriter(path)
-    elif output_format == "geoparquet":
-        # Update the geoparquet metadata to remove the file-level bbox which
-        # will no longer apply to this file. Since we cannot write the field at
-        # the end, just remove it as it's optional. Let the per-row bounding
-        # boxes do all the work.
-        metadata = schema.metadata
-        # extract geo metadata
-        geo = json.loads(metadata[b"geo"])
-        # the spec allows for multiple geom columns
-        geo_columns = geo["columns"]
-        if len(geo_columns) > 1:
-            raise IOError("Expected single geom column but encountered multiple.")
-        for geom_col_vals in geo_columns.values():
-            # geom level extents "bbox" is optional - remove if present
-            # since extracted data will have different extents
-            if "bbox" in geom_col_vals:
-                geom_col_vals.pop("bbox")
-            # add "covering" if there is a row level "bbox" column
-            # this facilitates spatial filters e.g. geopandas read_parquet
-            if "bbox" in schema.names:
-                geom_col_vals["covering"] = {
-                    "bbox": {
-                        "xmin": ["bbox", "xmin"],
-                        "ymin": ["bbox", "ymin"],
-                        "xmax": ["bbox", "xmax"],
-                        "ymax": ["bbox", "ymax"],
-                    }
-                }
-        metadata[b"geo"] = json.dumps(geo).encode("utf-8")
-        schema = schema.with_metadata(metadata)
-        writer = pq.ParquetWriter(path, schema)
-    return writer
+from .writers import copy, get_writer
 
 
 # Earth's total surface area in square degrees (360 * 180).
 EARTH_AREA_SQ_DEG = 64800
 # Threshold (fraction of Earth) above which we warn about a large bbox.
 LARGE_BBOX_THRESHOLD = 0.01  # 1% of Earth
+
+
+def _print_banner():
+    try:
+        import pyfiglet
+        banner = pyfiglet.figlet_format("Overture Maps", font="slant")
+    except Exception:
+        banner = "Overture Maps\n"
+    version = importlib.metadata.version("overturemaps")
+    click.secho(banner.rstrip(), fg="blue", bold=True, err=True)
+    click.secho(f"  v{version}  |  overturemaps.org\n", fg="bright_blue", err=True)
 
 
 def _bbox_area_sq_deg(xmin: float, ymin: float, xmax: float, ymax: float) -> float:
@@ -140,8 +108,12 @@ def validate_release(ctx, param, value):
 
     available_releases, _ = get_available_releases()
     if value not in available_releases:
-        raise click.BadParameter(
-            f"Release '{value}' not found. Available releases: {', '.join(available_releases)}"
+        raise click.UsageError(
+            f"Release '{value}' is no longer available. Overture keeps only the last "
+            f"two monthly releases (~60 days) for GDPR compliance. Older releases are "
+            f"automatically deleted from AWS S3 and Azure.\n\n"
+            f"Available releases: {', '.join(available_releases)}\n"
+            f"See all past release notes at: https://docs.overturemaps.org/release-calendar"
         )
     return value
 
@@ -152,21 +124,22 @@ def validate_gers_id(ctx, param, value):
         raise click.BadParameter("GERS ID cannot be empty")
 
     try:
-        # Try to parse as UUID - this validates the format
-        # Convert to standard format with dashes (lowercase with dashes)
         parsed_uuid = uuid.UUID(value)
         return str(parsed_uuid)
     except ValueError:
         raise click.BadParameter(f"GERS ID must be a valid UUID. Got: '{value}'")
 
 
-@click.group()
+@click.group(invoke_without_command=True)
 @click.version_option(
     version=importlib.metadata.version("overturemaps"),
     prog_name="overturemaps",
 )
-def cli():
-    pass
+@click.pass_context
+def cli(ctx):
+    if ctx.invoked_subcommand is None:
+        _print_banner()
+        click.echo(ctx.get_help())
 
 
 @cli.command()
@@ -206,25 +179,27 @@ def cli():
 def download(
     bbox, output_format, output, type_, release, connect_timeout, request_timeout, stac
 ):
-    # Warn when no bbox is provided
     if bbox is None:
-        click.echo(
+        click.secho(
             "Warning: No bounding box provided. Downloading the entire dataset "
             "for this type. The full Overture dataset is approximately "
             "1.2 TB as GeoJSON and 400 GB as GeoParquet.",
+            fg="yellow",
+            bold=True,
             err=True,
         )
     else:
-        # Warn if the bbox covers a large area
         area = _bbox_area_sq_deg(bbox[0], bbox[1], bbox[2], bbox[3])
         fraction = area / EARTH_AREA_SQ_DEG
         if fraction >= LARGE_BBOX_THRESHOLD:
             pct = fraction * 100
-            click.echo(
+            click.secho(
                 f"Warning: The bounding box covers ~{pct:.1f}% of Earth's surface. "
                 f"This may take a long time and use significant bandwidth. "
                 f"The full Overture dataset is approximately "
                 f"1.2 TB as GeoJSON and 400 GB as GeoParquet.",
+                fg="yellow",
+                bold=True,
                 err=True,
             )
 
@@ -233,10 +208,7 @@ def download(
             "Output file (-o/--output) is required when using geoparquet format"
         )
 
-    if output is None:
-        output_file = sys.stdout
-    else:
-        output_file = output
+    output_file = sys.stdout if output is None else output
 
     reader = record_batch_reader(
         type_, bbox, release, connect_timeout, request_timeout, stac
@@ -248,20 +220,19 @@ def download(
     with get_writer(output_format, output_file, schema=reader.schema) as writer:
         copy(reader, writer)
 
-    # Save state file if output was written to a file
     if output is not None:
         output_path = os.path.abspath(os.path.expanduser(output))
-
-        # Determine backend from output format
         backend = Backend(output_format)
-
-        # Get theme from type
         theme = type_theme_map.get(type_)
         if theme is None:
-            click.echo(f"Warning: Could not determine theme for type {type_}", err=True)
+            click.secho(
+                f"Warning: Could not determine theme for type {type_}",
+                fg="yellow",
+                bold=True,
+                err=True,
+            )
             return
 
-        # Create and save state
         state = PipelineState(
             last_release=release,
             last_run=datetime.now(timezone.utc).isoformat(),
@@ -278,7 +249,7 @@ def download(
 
         state_path = get_state_path(output)
         save_state(state, state_path)
-        click.echo(f"State saved to {state_path}", err=True)
+        click.secho(f"State saved to {state_path}", fg="bright_black", err=True)
 
 
 @cli.command()
@@ -307,20 +278,20 @@ def gers(ctx, gers_id, output_format, output, connect_timeout, request_timeout):
     """
     from .core import query_gers_registry
 
-    # First, query the registry to get feature information
     result = query_gers_registry(gers_id)
 
     if result is None:
-        # Error message already printed by query_gers_registry
         ctx.exit(1)
 
-    # If no format specified, we're done - just show the registry info
     if output_format is None:
-        click.echo(f"\nRegistry lookup complete for GERS ID: {gers_id}", err=True)
-        click.echo("To download the feature data, use -f/--format option.", err=True)
+        click.secho(
+            f"\nRegistry lookup complete for GERS ID: {gers_id}", fg="bright_black", err=True
+        )
+        click.secho(
+            "To download the feature data, use -f/--format option.", fg="bright_black", err=True
+        )
         return
 
-    # Format specified - proceed to download the feature
     if output_format == "geoparquet" and output is None:
         raise click.UsageError(
             "Output file (-o/--output) is required when using geoparquet format"
@@ -329,115 +300,20 @@ def gers(ctx, gers_id, output_format, output, connect_timeout, request_timeout):
     if output is None:
         output = sys.stdout
 
-    # Pass the registry result to avoid duplicate query
     reader = record_batch_reader_from_gers(
         gers_id, connect_timeout, request_timeout, registry_result=result
     )
 
     if reader is None:
-        click.echo(
+        click.secho(
             f"Could not fetch feature data for GERS ID '{gers_id}'",
+            fg="red",
             err=True,
         )
         ctx.exit(1)
 
     with get_writer(output_format, output, schema=reader.schema) as writer:
         copy(reader, writer)
-
-
-def copy(reader, writer):
-    with tqdm(total=None, unit=" rows", desc="Downloading", file=sys.stderr) as bar:
-        while True:
-            try:
-                batch = reader.read_next_batch()
-            except StopIteration:
-                break
-            if batch.num_rows > 0:
-                writer.write_batch(batch)
-                bar.update(batch.num_rows)
-
-
-class BaseGeoJSONWriter:
-    """
-    A base feature writer that manages either a file handle
-    or output stream. Subclasses should implement write_feature()
-    and finalize() if needed
-    """
-
-    def __init__(self, where):
-        self.file_handle = None
-        if isinstance(where, str):
-            self.file_handle = open(os.path.expanduser(where), "w")
-            self.writer = self.file_handle
-        else:
-            self.writer = where
-        self.is_open = True
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, value, traceback):
-        self.close()
-
-    def close(self):
-        if not self.is_open:
-            return
-        self.finalize()
-        if self.file_handle:
-            self.file_handle.close()
-        self.is_open = False
-
-    def write_batch(self, batch):
-        if batch.num_rows == 0:
-            return
-
-        geom_strings = shapely.to_geojson(
-            shapely.from_wkb(batch.column("geometry").to_pylist())
-        )
-
-        prop_cols = [c for c in batch.schema.names if c not in ("geometry", "bbox")]
-        rows = batch.select(prop_cols).to_pylist()
-
-        for geom_str, row in zip(geom_strings, rows):
-            self.write_feature(geom_str, row)
-
-    def write_feature(self, geom_str, props):
-        pass
-
-    def finalize(self):
-        pass
-
-
-class GeoJSONSeqWriter(BaseGeoJSONWriter):
-    def write_feature(self, geom_str, props):
-        props_str = orjson.dumps(
-            {k: v for k, v in props.items() if v is not None}
-        ).decode()
-        self.writer.write(
-            f'{{"type":"Feature","geometry":{geom_str},"properties":{props_str}}}\n'
-        )
-
-
-class GeoJSONWriter(BaseGeoJSONWriter):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._has_written_feature = False
-
-        self.writer.write('{"type": "FeatureCollection", "features": [\n')
-
-    def write_feature(self, geom_str, props):
-        props_str = orjson.dumps(
-            {k: v for k, v in props.items() if v is not None}
-        ).decode()
-        if self._has_written_feature:
-            self.writer.write(",\n")
-        self.writer.write(
-            f'{{"type":"Feature","geometry":{geom_str},"properties":{props_str}}}'
-        )
-        self._has_written_feature = True
-
-    def finalize(self):
-        self.writer.write("]}")
 
 
 @cli.group()
@@ -451,17 +327,20 @@ def releases_list():
     """List all available Overture Maps releases."""
     all_releases = list_releases()
     if not all_releases:
-        click.echo("No releases found.", err=True)
+        click.secho("No releases found.", fg="red", err=True)
         return
-    for release in all_releases:
-        click.echo(release)
+    for i, release in enumerate(all_releases):
+        if i == 0:
+            click.secho(release, fg="cyan", bold=True)  # latest
+        else:
+            click.echo(release)
 
 
 @releases.command(name="latest")
 def releases_latest():
     """Show the latest Overture Maps release."""
     latest = get_latest_release()
-    click.echo(latest)
+    click.secho(latest, fg="cyan", bold=True)
 
 
 @cli.group()
@@ -491,17 +370,14 @@ def changelog_query(bbox, theme, type_, release):
     """
     bbox_obj = BBox(xmin=bbox[0], ymin=bbox[1], xmax=bbox[2], ymax=bbox[3])
 
-    # Determine which theme/type combinations to query
     if theme and type_:
         if type_ not in type_theme_map:
             raise click.BadParameter(f"Unknown type '{type_}'", param_hint="--type")
         themes_types = [(theme, type_)]
     elif theme:
-        # Get all types for this theme
         types = [t for t, th in type_theme_map.items() if th == theme]
         themes_types = [(theme, t) for t in types]
     elif type_:
-        # Get theme for this type
         if type_ not in type_theme_map:
             raise click.BadParameter(f"Unknown type '{type_}'", param_hint="type")
         theme = type_theme_map[type_]
@@ -513,7 +389,7 @@ def changelog_query(bbox, theme, type_, release):
     total_modified = 0
     total_deleted = 0
 
-    click.echo(f"Querying changelog for release {release}...")
+    click.secho(f"Querying changelog for release {release}...", fg="bright_black")
     click.echo()
 
     for theme_name, type_name in themes_types:
@@ -528,17 +404,17 @@ def changelog_query(bbox, theme, type_, release):
         total_deleted += deleted
 
         if added + modified + deleted > 0:
-            click.echo(f"{theme_name}/{type_name}:")
-            click.echo(f"  Added:    {added}")
-            click.echo(f"  Modified: {modified}")
-            click.echo(f"  Deleted:  {deleted}")
+            click.secho(f"{theme_name}/{type_name}:", bold=True)
+            click.secho(f"  Added:    {added}", fg="green")
+            click.secho(f"  Modified: {modified}", fg="yellow")
+            click.secho(f"  Deleted:  {deleted}", fg="red")
             click.echo()
 
     if len(themes_types) > 1:
-        click.echo("Total:")
-        click.echo(f"  Added:    {total_added}")
-        click.echo(f"  Modified: {total_modified}")
-        click.echo(f"  Deleted:  {total_deleted}")
+        click.secho("Total:", bold=True)
+        click.secho(f"  Added:    {total_added}", fg="green", bold=True)
+        click.secho(f"  Modified: {total_modified}", fg="yellow", bold=True)
+        click.secho(f"  Deleted:  {total_deleted}", fg="red", bold=True)
 
 
 @changelog.command(name="summary")
@@ -560,7 +436,7 @@ def changelog_summary(theme, type_, release):
         overturemaps changelog summary --type=building
         overturemaps changelog summary  # All themes/types
     """
-    click.echo(f"Summarizing changelog for release {release}...")
+    click.secho(f"Summarizing changelog for release {release}...", fg="bright_black")
     click.echo()
 
     try:
@@ -572,16 +448,22 @@ def changelog_summary(theme, type_, release):
 
     for theme_name, types_data in results.items():
         for type_name, change_counts in types_data.items():
-            click.echo(f"{theme_name}/{type_name}:")
+            click.secho(f"{theme_name}/{type_name}:", bold=True)
             for change_type, count in sorted(change_counts.items()):
-                click.echo(f"  {change_type}: {count}")
+                fg = {"added": "green", "data_changed": "yellow", "removed": "red"}.get(
+                    change_type
+                )
+                click.secho(f"  {change_type}: {count}", fg=fg)
                 grand_totals[change_type] = grand_totals.get(change_type, 0) + count
             click.echo()
 
     if len(results) > 1 or (len(results) == 1 and len(list(results.values())[0]) > 1):
-        click.echo("Grand Total:")
+        click.secho("Grand Total:", bold=True)
         for change_type, count in sorted(grand_totals.items()):
-            click.echo(f"  {change_type}: {count}")
+            fg = {"added": "green", "data_changed": "yellow", "removed": "red"}.get(
+                change_type
+            )
+            click.secho(f"  {change_type}: {count}", fg=fg, bold=True)
 
 
 @releases.command(name="check")
@@ -593,20 +475,22 @@ def releases_check(ctx, output):
     state = load_state(state_path)
 
     if state is None:
-        click.echo(f"No state file found at {state_path}", err=True)
-        click.echo("Cannot determine current release version.", err=True)
+        click.secho(f"No state file found at {state_path}", fg="red", err=True)
+        click.secho("Cannot determine current release version.", fg="red", err=True)
         ctx.exit(1)
 
     latest = get_latest_release()
 
-    click.echo(f"Current release: {state.last_release}")
-    click.echo(f"Latest release:  {latest}")
+    click.echo(
+        "Current release: " + click.style(state.last_release, fg="cyan", bold=True)
+    )
+    click.echo("Latest release:  " + click.style(latest, fg="cyan", bold=True))
 
     if state.last_release == latest:
-        click.echo("✓ Up to date")
+        click.secho("✓ Up to date", fg="green", bold=True)
         ctx.exit(0)
     else:
-        click.echo("✗ Update available")
+        click.secho("✗ Update available", fg="yellow", bold=True)
         ctx.exit(1)
 
 
@@ -616,7 +500,7 @@ def releases_exists(release):
     """Check whether a release exists."""
     if not release_exists(release):
         raise click.ClickException(f"Release '{release}' not found")
-    click.echo("true")
+    click.secho("true", fg="green")
 
 
 if __name__ == "__main__":
