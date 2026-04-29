@@ -49,6 +49,12 @@ def get_writer(output_format, path, schema):
         metadata[b"geo"] = json.dumps(geo).encode("utf-8")
         schema = schema.with_metadata(metadata)
         return pq.ParquetWriter(path, schema)
+    else:
+        supported = ("geojson", "geojsonseq", "geoparquet")
+        raise ValueError(
+            f"Unknown output format {output_format!r}. "
+            f"Supported formats: {', '.join(supported)}"
+        )
 
 
 def copy(reader, writer):

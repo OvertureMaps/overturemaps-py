@@ -77,8 +77,9 @@ from overturemaps import record_batch_reader
 bbox = (-71.068, 42.353, -71.058, 42.363)  # xmin, ymin, xmax, ymax
 reader = record_batch_reader("building", bbox=bbox)
 
-table = reader.read_all()
-print(table.schema)
+if reader is not None:
+    table = reader.read_all()
+    print(table.schema)
 ```
 
 #### GeoDataFrame (geopandas)

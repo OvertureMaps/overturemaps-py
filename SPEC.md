@@ -138,10 +138,9 @@ def record_batch_reader(
     type: str,
     bbox: BBox | tuple | list | None = None,
     release: str | None = None,
-    *,
     connect_timeout: int | None = None,
     request_timeout: int | None = None,
-    stac: bool = True,
+    stac: bool = False,
 ) -> pyarrow.RecordBatchReader | None
 ```
 
