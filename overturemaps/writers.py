@@ -127,6 +127,9 @@ class BaseGeoJSONWriter:
 
 
 class GeoJSONSeqWriter(BaseGeoJSONWriter):
+    def finalize(self):
+        pass  # GeoJSONSeq has no closing footer
+
     def write_feature(self, geom_str, props):
         props_str = orjson.dumps(
             {k: v for k, v in props.items() if v is not None}
