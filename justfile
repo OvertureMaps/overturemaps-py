@@ -2,7 +2,7 @@
 
 set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 
-latest_release := "curl -s https://stac.overturemaps.org | jq -r '.latest'"
+latest_release := `curl -s https://stac.overturemaps.org | jq -r '.latest'`
 
 @_default:
     {{ just_executable() }} --list
