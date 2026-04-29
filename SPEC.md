@@ -169,7 +169,7 @@ def geodataframe(
 ) -> GeoDataFrame
 ```
 
-Requires `geopandas` extra (`pip install overturemaps[geopandas]`). Raises `ImportError` with install hint if `geopandas` not present.
+Requires the `geopandas` extra (`pip install overturemaps[geopandas]`). Raises `ImportError("geopandas is required to use this function")` if `geopandas` is not installed.
 
 ### 4.4 `geoarrow_schema_adapter`
 
