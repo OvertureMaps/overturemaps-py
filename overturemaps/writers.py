@@ -131,11 +131,15 @@ class GeoJSONSeqWriter(BaseGeoJSONWriter):
         pass  # GeoJSONSeq has no closing footer
 
     def write_feature(self, geom_str, props):
-        props_str = orjson.dumps(
-            {k: v for k, v in props.items() if v is not None}
-        ).decode()
+        # GeoJSON Feature identity belongs at top-level "id", not under properties.
+        feature_id = props.get("id")
+        properties = {k: v for k, v in props.items() if k != "id" and v is not None}
+        props_str = orjson.dumps(properties).decode()
+        feature_id_str = (
+            f'"id":{orjson.dumps(feature_id).decode()},' if feature_id is not None else ""
+        )
         self.writer.write(
-            f'{{"type":"Feature","geometry":{geom_str},"properties":{props_str}}}\n'
+            f'{{{feature_id_str}"type":"Feature","geometry":{geom_str},"properties":{props_str}}}\n'
         )
 
 
@@ -146,13 +150,17 @@ class GeoJSONWriter(BaseGeoJSONWriter):
         self.writer.write('{"type": "FeatureCollection", "features": [\n')
 
     def write_feature(self, geom_str, props):
-        props_str = orjson.dumps(
-            {k: v for k, v in props.items() if v is not None}
-        ).decode()
+        # Keep feature id semantics consistent across both GeoJSON output modes.
+        feature_id = props.get("id")
+        properties = {k: v for k, v in props.items() if k != "id" and v is not None}
+        props_str = orjson.dumps(properties).decode()
+        feature_id_str = (
+            f'"id":{orjson.dumps(feature_id).decode()},' if feature_id is not None else ""
+        )
         if self._has_written_feature:
             self.writer.write(",\n")
         self.writer.write(
-            f'{{"type":"Feature","geometry":{geom_str},"properties":{props_str}}}'
+            f'{{{feature_id_str}"type":"Feature","geometry":{geom_str},"properties":{props_str}}}'
         )
         self._has_written_feature = True
 
