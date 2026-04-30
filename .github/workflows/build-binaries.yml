@@ -32,7 +32,7 @@ jobs:
           - os: macos-latest
             target: macos-arm64
             ext: ""
-          - os: macos-13
+          - os: macos-26-intel
             target: macos-x86_64
             ext: ""
           - os: windows-latest
