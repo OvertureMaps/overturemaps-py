@@ -61,6 +61,58 @@ Command-line options:
 - `--connect_timeout` (optional): Socket connection timeout, in seconds. If omitted, the AWS SDK default value is used (typically 1 second).
 - `--request_timeout` (optional): Socket read timeouts on Windows and macOS, in seconds. If omitted, the AWS SDK default value is used (typically 3 seconds). This option is ignored on non-Windows, non-macOS systems.
 
+## Python API
+
+`overturemaps` is also a Python library. Import directly from `overturemaps` to query Overture data
+without using the CLI.
+
+#### Arrow / pyarrow
+
+`record_batch_reader` returns a `pyarrow.RecordBatchReader` — a streaming cursor over the data.
+This is the lowest-level entry point and works with any Arrow-compatible tool.
+
+```python
+from overturemaps import record_batch_reader
+
+bbox = (-71.068, 42.353, -71.058, 42.363)  # xmin, ymin, xmax, ymax
+reader = record_batch_reader("building", bbox=bbox)
+
+if reader is not None:
+    table = reader.read_all()
+    print(table.schema)
+```
+
+#### GeoDataFrame (geopandas)
+
+`geodataframe` loads data directly into a `geopandas.GeoDataFrame`. Requires `geopandas` to be
+installed (`pip install overturemaps[geopandas]` or `pip install geopandas`).
+
+```python
+from overturemaps import geodataframe
+
+bbox = (-71.068, 42.353, -71.058, 42.363)
+gdf = geodataframe("building", bbox=bbox)
+print(gdf.head())
+```
+
+#### Writing to a file format
+
+Use `get_writer` and `copy` from `overturemaps.writers` to write data to GeoJSON, GeoJSONSeq, or
+GeoParquet without the CLI:
+
+```python
+from overturemaps import record_batch_reader
+from overturemaps.writers import copy, get_writer
+
+bbox = (-71.068, 42.353, -71.058, 42.363)
+reader = record_batch_reader("building", bbox=bbox)
+
+with get_writer("geojson", "boston.geojson", schema=reader.schema) as writer:
+    copy(reader, writer)
+```
+
+Supported format strings: `"geojson"`, `"geojsonseq"`, `"geoparquet"`.
+
 ## Installation
 
 overturemaps is available via [Homebrew](https://brew.sh/):
