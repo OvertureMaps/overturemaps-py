@@ -34,8 +34,17 @@ class TestGeoJSONSeqWriter:
         writer.write_feature('{"type":"Point","coordinates":[1,1]}', {"id": 2})
         lines = [line for line in buf.getvalue().splitlines() if line.strip()]
         assert len(lines) == 2
-        assert json.loads(lines[0])["properties"]["id"] == 1
-        assert json.loads(lines[1])["properties"]["id"] == 2
+        assert json.loads(lines[0])["id"] == 1
+        assert json.loads(lines[1])["id"] == 2
+
+    def test_writes_top_level_id_not_properties(self):
+        buf = io.StringIO()
+        writer = GeoJSONSeqWriter(buf)
+        writer.write_feature('{"type":"Point","coordinates":[0,0]}', {"id": "abc", "name": "n"})
+        obj = json.loads(buf.getvalue().strip())
+        assert obj["id"] == "abc"
+        assert "id" not in obj["properties"]
+        assert obj["properties"]["name"] == "n"
 
     def test_context_manager_closes_cleanly(self):
         buf = io.StringIO()
@@ -71,7 +80,19 @@ class TestGeoJSONWriter:
             writer.write_feature('{"type":"Point","coordinates":[1,1]}', {"id": 2})
         obj = json.loads(buf.getvalue())
         assert len(obj["features"]) == 2
-        assert obj["features"][1]["properties"]["id"] == 2
+        assert obj["features"][1]["id"] == 2
+
+    def test_writes_top_level_id_not_properties(self):
+        buf = io.StringIO()
+        with GeoJSONWriter(buf) as writer:
+            writer.write_feature(
+                '{"type":"Point","coordinates":[0,0]}',
+                {"id": "abc", "name": "n"},
+            )
+        feature = json.loads(buf.getvalue())["features"][0]
+        assert feature["id"] == "abc"
+        assert "id" not in feature["properties"]
+        assert feature["properties"]["name"] == "n"
 
     def test_filters_none_properties(self):
         buf = io.StringIO()
