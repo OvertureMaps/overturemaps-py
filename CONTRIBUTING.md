@@ -12,11 +12,11 @@ The package is published to [PyPI](https://pypi.org/project/overturemaps/) via t
 
 1. Update the version in [`pyproject.toml`](pyproject.toml) (field: `project.version`).
 2. Commit and merge to `main`.
-3. Create a GitHub Release (tag + title + notes). Publishing the release triggers the workflow automatically.
-4. Triggered by the release creation:
+3. Create a GitHub Release (tag + title + notes).
+4. The creation of a new release automatically triggers:
    - The publish-pypi workflow builds the package and publishes to PyPI in the [`pypi` GitHub environment](https://github.com/OvertureMaps/overturemaps-py/deployments).
    - The build-binaries workflow builds cross-OS binaries and attaches them to the release
-   - `brew`'s BrewTestBot scans PyPI every 3 hours, and will automatically update our [formula](https://github.com/Homebrew/homebrew-core/blob/main/Formula/o/overturemaps.rb) to the latest version
+   - `brew`'s BrewTestBot scans PyPI every 3 hours, and will automatically update our [formula](https://github.com/Homebrew/homebrew-core/blob/main/Formula/o/overturemaps.rb) to the latest version in [Homebrew/homebrew-core](https://github.com/Homebrew/homebrew-core)
 
 ### Dry-run / Test PyPI
 
