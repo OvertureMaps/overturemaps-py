@@ -87,6 +87,7 @@ jobs:
 
       - name: Upload to release
         if: github.event_name == 'release'
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
