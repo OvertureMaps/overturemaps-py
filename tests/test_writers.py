@@ -3,7 +3,6 @@
 import builtins
 import io
 import json
-import os
 
 import pytest
 
