@@ -20,14 +20,17 @@ def narrow_open(monkeypatch):
     causing UnicodeEncodeError on non-ASCII content — exactly the failure
     reported in issue #113. Writers that hard-code encoding='utf-8' are immune.
     """
+    import io as _io
+
     _real_open = builtins.open
 
-    def _narrow(file, mode="r", **kwargs):
-        if "b" not in mode and "encoding" not in kwargs:
-            kwargs["encoding"] = "ascii"
-        return _real_open(file, mode, **kwargs)
+    def _narrow(file, mode="r", buffering=-1, encoding=None, errors=None, newline=None, closefd=True, opener=None):
+        if "b" not in mode and encoding is None:
+            encoding = "ascii"
+        return _real_open(file, mode, buffering, encoding, errors, newline, closefd, opener)
 
     monkeypatch.setattr(builtins, "open", _narrow)
+    monkeypatch.setattr(_io, "open", _narrow)
     return _narrow
 
 
