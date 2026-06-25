@@ -81,7 +81,7 @@ class BaseGeoJSONWriter:
     def __init__(self, where):
         self.file_handle = None
         if isinstance(where, str):
-            self.file_handle = open(os.path.expanduser(where), "w")
+            self.file_handle = open(os.path.expanduser(where), "w", encoding="utf-8")
             self.writer = self.file_handle
         else:
             self.writer = where

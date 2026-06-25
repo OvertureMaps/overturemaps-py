@@ -1,9 +1,35 @@
 """Tests for writers.py — GeoJSON writer classes and get_writer factory."""
 
+import builtins
 import io
 import json
+import os
+
+import pytest
 
 from overturemaps.writers import GeoJSONSeqWriter, GeoJSONWriter, get_writer
+
+# Characters that fail under cp932 (Japanese Windows) or charmap (Western Windows).
+_NON_ASCII_CHARS = "Ć Č \u2013 \u0106"
+
+
+@pytest.fixture()
+def narrow_open(monkeypatch):
+    """Simulate a platform where open() defaults to a narrow encoding (e.g. cp932/ascii).
+
+    Any open() call that doesn't explicitly pass encoding= will get 'ascii',
+    causing UnicodeEncodeError on non-ASCII content — exactly the failure
+    reported in issue #113. Writers that hard-code encoding='utf-8' are immune.
+    """
+    _real_open = builtins.open
+
+    def _narrow(file, mode="r", **kwargs):
+        if "b" not in mode and "encoding" not in kwargs:
+            kwargs["encoding"] = "ascii"
+        return _real_open(file, mode, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", _narrow)
+    return _narrow
 
 
 class TestGeoJSONSeqWriter:
@@ -121,3 +147,43 @@ class TestGetWriter:
         buf = io.StringIO()
         with get_writer("geojsonseq", buf, schema=None) as writer:
             assert isinstance(writer, GeoJSONSeqWriter)
+
+
+class TestNarrowEncodingFile:
+    """Regression tests for issue #113 — UnicodeEncodeError on Windows.
+
+    The narrow_open fixture patches builtins.open so any call without an
+    explicit encoding= gets 'ascii', reproducing the cp932/charmap failure.
+    Tests here must still pass: writers must hard-code encoding='utf-8'.
+    """
+
+    def test_geojson_file_writer_survives_narrow_locale(self, tmp_path, narrow_open):
+        out = str(tmp_path / "out.geojson")
+        with GeoJSONWriter(out) as writer:
+            writer.write_feature(
+                '{"type":"Point","coordinates":[0,0]}',
+                {"name": _NON_ASCII_CHARS},
+            )
+        content = json.loads((tmp_path / "out.geojson").read_text(encoding="utf-8"))
+        assert content["features"][0]["properties"]["name"] == _NON_ASCII_CHARS
+
+    def test_geojsonseq_file_writer_survives_narrow_locale(self, tmp_path, narrow_open):
+        out = str(tmp_path / "out.geojsonseq")
+        with GeoJSONSeqWriter(out) as writer:
+            writer.write_feature(
+                '{"type":"Point","coordinates":[0,0]}',
+                {"name": _NON_ASCII_CHARS},
+            )
+        content = json.loads((tmp_path / "out.geojsonseq").read_text(encoding="utf-8"))
+        assert content["properties"]["name"] == _NON_ASCII_CHARS
+
+    def test_without_fix_narrow_locale_would_fail(self, tmp_path, narrow_open):
+        """Confirm narrow_open fixture actually breaks un-guarded open() calls.
+
+        This test documents the failure mode: if writers ever drop encoding=,
+        this assertion shows what would blow up.
+        """
+        out = str(tmp_path / "broken.txt")
+        with pytest.raises(UnicodeEncodeError):
+            with builtins.open(out, "w") as f:  # no encoding= → ascii → boom
+                f.write(_NON_ASCII_CHARS)
