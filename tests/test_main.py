@@ -1,7 +1,6 @@
 """Tests for overturemaps/__main__.py (PyInstaller / python -m overturemaps entry point)."""
 
 import runpy
-import sys
 from unittest.mock import patch
 
 import pytest

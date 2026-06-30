@@ -1,6 +1,6 @@
 [project]
 name = "overturemaps"
-version = "1.0.0"
+version = "1.0.1"
 description = "Python tools for interacting with Overture Maps (overturemaps.org) data."
 authors = [
     {name = "Jacob Wasserman", email = "jwasserman@meta.com"}
@@ -46,11 +46,18 @@ dev = [
     "pytest>=8.0.0",
     "pytest-mock>=3.11.0",
     "pytest-benchmark>=5.0.0",
+    "ruff>=0.4.0",
 ]
 binary = [
     "pyinstaller>=6.0",
     "pyinstaller-hooks-contrib>=2024.10",
 ]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["F401"]  # unused imports
 
 [build-system]
 requires = ["hatchling"]

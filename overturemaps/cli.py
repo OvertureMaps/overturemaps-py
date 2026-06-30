@@ -208,7 +208,12 @@ def download(
             "Output file (-o/--output) is required when using geoparquet format"
         )
 
-    output_file = sys.stdout if output is None else output
+    if output is None:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        output_file = sys.stdout
+    else:
+        output_file = output
 
     reader = record_batch_reader(
         type_, bbox, release, connect_timeout, request_timeout, stac
@@ -298,6 +303,8 @@ def gers(ctx, gers_id, output_format, output, connect_timeout, request_timeout):
         )
 
     if output is None:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
         output = sys.stdout
 
     reader = record_batch_reader_from_gers(
