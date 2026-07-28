@@ -19,3 +19,21 @@ updates:
       include: "scope"
     cooldown:
       default-days: 7
+
+  # Maintain Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+    labels:
+      - "bot"
+    commit-message:
+      prefix: "[CHORE](deps)"
+      include: "scope"
+    cooldown:
+      default-days: 7
