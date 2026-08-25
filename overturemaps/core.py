@@ -2,6 +2,7 @@ import io
 import json
 import sys
 from typing import List, Optional, Tuple
+from urllib.parse import urlparse
 from urllib.request import urlopen
 
 import pyarrow as pa
@@ -73,8 +74,10 @@ def get_available_releases() -> Tuple[List[str], str]:
     for link in catalog.get("links", []):
         if link.get("rel") == "child":
             href = link.get("href", "")
-            # href format is "./2025-09-24.0/catalog.json"
-            release_version = href.strip("./").split("/")[0]
+            # href may be relative ("./2025-09-24.0/catalog.json") or absolute
+            # ("https://stac.overturemaps.org/2025-09-24.0/catalog.json").
+            segments = [s for s in urlparse(href).path.split("/") if s and s != "."]
+            release_version = segments[0] if segments else ""
             if release_version:
                 releases.append(release_version)
 

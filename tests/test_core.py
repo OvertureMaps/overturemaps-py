@@ -9,6 +9,7 @@ from overturemaps.core import (
     _dataset_path,
     geoarrow_schema_adapter,
     get_all_overture_types,
+    get_available_releases,
     type_theme_map,
 )
 from overturemaps.models import BBox
@@ -114,3 +115,49 @@ class TestGeoarrowSchemaAdapter:
         result = geoarrow_schema_adapter(schema)
         assert result.field("id").type == pa.string()
         assert result.field("id").metadata is None
+
+
+class TestGetAvailableReleases:
+    """Regression tests for parsing STAC catalog child link hrefs.
+
+    A prior implementation used ``href.strip("./").split("/")[0]``, which
+    assumed a relative href like ``./2025-09-24.0/catalog.json``. The live
+    STAC catalog started returning absolute hrefs, which that strip/split
+    silently mis-parsed into ``"https:"`` instead of the release ID. These
+    mock the catalog so the case is verified without depending on remote
+    catalog contents.
+    """
+
+    def test_relative_child_hrefs(self, monkeypatch):
+        catalog = {
+            "latest": "2025-09-24.0",
+            "links": [
+                {"rel": "child", "href": "./2025-09-24.0/catalog.json"},
+                {"rel": "child", "href": "./2025-08-20.0/catalog.json"},
+                {"rel": "self", "href": "./catalog.json"},
+            ],
+        }
+        monkeypatch.setattr("overturemaps.core._cached_stac_catalog", catalog)
+        releases, latest = get_available_releases()
+        assert sorted(releases) == ["2025-08-20.0", "2025-09-24.0"]
+        assert latest == "2025-09-24.0"
+
+    def test_absolute_child_hrefs(self, monkeypatch):
+        catalog = {
+            "latest": "2026-08-19.0",
+            "links": [
+                {
+                    "rel": "child",
+                    "href": "https://stac.overturemaps.org/2026-08-19.0/catalog.json",
+                },
+                {
+                    "rel": "child",
+                    "href": "https://stac.overturemaps.org/2026-07-22.0/catalog.json",
+                },
+                {"rel": "self", "href": "https://stac.overturemaps.org/catalog.json"},
+            ],
+        }
+        monkeypatch.setattr("overturemaps.core._cached_stac_catalog", catalog)
+        releases, latest = get_available_releases()
+        assert sorted(releases) == ["2026-07-22.0", "2026-08-19.0"]
+        assert latest == "2026-08-19.0"
