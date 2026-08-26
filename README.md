@@ -35,16 +35,16 @@ brew install overturemaps
 conda install -c conda-forge overturemaps
 
 # uvx
-uvx overturemaps download --bbox=-71.068,42.353,-71.058,42.363 -f geojson --type=building -o boston.geojson
+uvx overturemaps download --bbox=-71.068,42.353,-71.058,42.363 -f geoparquet --type=building -o boston.parquet
 ```
 
 
 ## Quick Start
 
-Download building footprints for a bounding box as GeoJSON:
+Download building footprints for a bounding box as GeoParquet:
 
 ```bash
-overturemaps download --bbox=-71.068,42.353,-71.058,42.363 -f geojson --type=building -o boston.geojson
+overturemaps download --bbox=-71.068,42.353,-71.058,42.363 -f geoparquet --type=building -o boston.parquet
 ```
 
 ## Commands
