@@ -1,165 +1,66 @@
-[![PyPi](https://img.shields.io/pypi/v/overturemaps.svg)](https://pypi.python.org/pypi/overturemaps)
+[![PyPI](https://img.shields.io/pypi/v/overturemaps.svg)](https://pypi.org/project/overturemaps/)
+[![conda-forge](https://img.shields.io/conda/vn/conda-forge/overturemaps.svg)](https://anaconda.org/conda-forge/overturemaps)
+[![Homebrew](https://img.shields.io/badge/Homebrew-overturemaps-FBB040?logo=homebrew)](https://formulae.brew.sh/formula/overturemaps)
+[![Standalone Binaries](https://img.shields.io/badge/binaries-Linux%20%7C%20macOS%20%7C%20Windows-2ea44f)](https://github.com/OvertureMaps/overturemaps-py/releases/latest)
+[![GitHub Release](https://img.shields.io/github/v/release/OvertureMaps/overturemaps-py?display_name=release)](https://github.com/OvertureMaps/overturemaps-py/releases/latest)
 
 # overturemaps-py
 
-Official Python command-line tool of the [Overture Maps Foundation](https://overturemaps.org)
+<p align="center">
+  <img src="docs/screenshot.png" alt="overturemaps cli screenshot" width="800">
+</p>
 
-Overture Maps provides free and open geospatial map data, from many different sources and normalized to a
+Official Python command-line tool of the [Overture Maps Foundation](https://overturemaps.org).
+
+Overture provides free and open geospatial map data, from many different sources and normalized to a
 [common schema](https://github.com/OvertureMaps/schema). This tool helps to download Overture data
 within a region of interest and converts it to a few different file formats. For more information about accessing
-Overture Maps data, see our official documentation site <https://docs.overturemaps.org>.
-
-Note: This repository and project are experimental. Things are likely change including the user interface
-until a stable release, but we will keep the documentation here up-to-date.
-
-## Quick Start
-
-Download the building footprints for the specific bounding box as GeoJSON and save to a file named "boston.geojson"
-
-```bash
-overturemaps download --bbox=-71.068,42.353,-71.058,42.363 -f geojson --type=building -o boston.geojson
-```
-
-## Usage
-
-#### `download`
-
-Download Overture Maps data with an optional bounding box into the specified file format.
-When specifying a bounding box, only the minimum data is transferred. The result is streamed out and
-can handle arbitrarily large bounding boxes.
-
-Command-line options:
-
-- `--bbox` (optional): west, south, east, north longitude and latitude coordinates. When omitted the
-  entire dataset for the specified type will be downloaded
-- `-f` (required: one of "geojson", "geojsonseq", "geoparquet"): output format
-- `--output`/`-o` (optional): Location of output file. When omitted output will be written to stdout.
-- `--type`/`-t` (required): The Overture map data type to be downloaded. Examples of types are `building`
-  for building footprints, `place` for POI places data, etc. Run `overturemaps download --help` for the
-  complete list of allowed types
-- `--connect_timeout` (optional): Socket connection timeout, in seconds. If omitted, the AWS SDK default value is used (typically 1 second).
-- `--request_timeout` (optional): Socket read timeouts on Windows and macOS, in seconds. If omitted, the AWS SDK default value is used (typically 3 seconds). This option is ignored on non-Windows, non-macOS systems.
-- `--stac/--no-stac` (optional): By default, the reader uses Overture's [STAC catalog](https://stac.overturemaps.org/) to speed up queries to the latest release. If the `--no-stac` flag is present, the CLI will use the S3 path for the latest release directly.
-
-This downloads data directly from Overture's S3 bucket without interacting with any other servers.
-By including bounding box extents on each row in the Overture distribution, the underlying Parquet
-readers use the Parquet summary statistics to download the minimum amount of data
-necessary to extract data from the desired region.
-
-To help find bounding boxes of interest, we like this [bounding box tool](https://boundingbox.klokantech.com/)
-from [Klokantech](https://www.klokantech.com/). Choose the CSV format and copy the value directly into
-the `--bbox` field here.
-
-#### `gers [UUID]`
-
-Look up an ID in the GERS Registry. If the feature is present in the latest release, it will download the feature and write it out in the specified format.
-
-Command-line options:
-
-- `-f` ("geojson", "geojsonseq", "geoparquet"): output format, defaults to geojsonseq for a single feature on one line.
-- `--output`/`-o` (optional): Location of output file. When omitted output will be written to stdout.
-- `--connect_timeout` (optional): Socket connection timeout, in seconds. If omitted, the AWS SDK default value is used (typically 1 second).
-- `--request_timeout` (optional): Socket read timeouts on Windows and macOS, in seconds. If omitted, the AWS SDK default value is used (typically 3 seconds). This option is ignored on non-Windows, non-macOS systems.
-
-## Python API
-
-`overturemaps` is also a Python library. Import directly from `overturemaps` to query Overture data
-without using the CLI.
-
-#### Arrow / pyarrow
-
-`record_batch_reader` returns a `pyarrow.RecordBatchReader` — a streaming cursor over the data.
-This is the lowest-level entry point and works with any Arrow-compatible tool.
-
-```python
-from overturemaps import record_batch_reader
-
-bbox = (-71.068, 42.353, -71.058, 42.363)  # xmin, ymin, xmax, ymax
-reader = record_batch_reader("building", bbox=bbox)
-
-if reader is not None:
-    table = reader.read_all()
-    print(table.schema)
-```
-
-#### GeoDataFrame (geopandas)
-
-`geodataframe` loads data directly into a `geopandas.GeoDataFrame`. Requires `geopandas` to be
-installed (`pip install overturemaps[geopandas]` or `pip install geopandas`).
-
-```python
-from overturemaps import geodataframe
-
-bbox = (-71.068, 42.353, -71.058, 42.363)
-gdf = geodataframe("building", bbox=bbox)
-print(gdf.head())
-```
-
-#### Writing to a file format
-
-Use `get_writer` and `copy` from `overturemaps.writers` to write data to GeoJSON, GeoJSONSeq, or
-GeoParquet without the CLI:
-
-```python
-from overturemaps import record_batch_reader
-from overturemaps.writers import copy, get_writer
-
-bbox = (-71.068, 42.353, -71.058, 42.363)
-reader = record_batch_reader("building", bbox=bbox)
-
-with get_writer("geojson", "boston.geojson", schema=reader.schema) as writer:
-    copy(reader, writer)
-```
-
-Supported format strings: `"geojson"`, `"geojsonseq"`, `"geoparquet"`.
+Overture data, see the [official documentation site](https://docs.overturemaps.org).
 
 ## Installation
 
-overturemaps is available via [Homebrew](https://brew.sh/):
-
-```bash
-brew install overturemaps
-```
-
-To install overturemaps from [PyPi](https://pypi.org/project/overturemaps/) using pip:
+Install with pip:
 
 ```bash
 pip install overturemaps
 ```
 
-overturemaps is also on [conda-forge](https://anaconda.org/conda-forge/overturemaps) and can be installed using conda, mamba, or pixi. To install overturemaps using conda:
+Also available via:
 
 ```bash
+# Homebrew
+brew install overturemaps
+
+# conda-forge
 conda install -c conda-forge overturemaps
+
+# uvx
+uvx overturemaps download --bbox=-71.068,42.353,-71.058,42.363 -f geoparquet --type=building -o boston.parquet
 ```
 
-If you have [uv](https://docs.astral.sh/uv/) installed, you can run overturemaps [with uvx](https://docs.astral.sh/uv/guides/tools/#running-tools) without installing it:
+
+## Quick Start
+
+Download building footprints for a bounding box as GeoParquet:
 
 ```bash
-uvx overturemaps download --bbox=-71.068,42.353,-71.058,42.363 -f geojson --type=building -o boston.parquet
+overturemaps download --bbox=-71.068,42.353,-71.058,42.363 -f geoparquet --type=building -o boston.parquet
 ```
 
-## Performance
+## Commands
 
-Benchmarks using synthetic data on Apple M-series hardware:
+The CLI includes these top-level commands:
 
-| Output format | Geometry | Rows | Time |
-|---|---|---|---|
-| GeoJSON | Points | 10 000 | 31 ms |
-| GeoJSON | Polygons | 10 000 | 44 ms |
-| GeoParquet | — | — | network/disk bound |
+- `download`: download Overture data, optionally clipped to a bounding box.
+- `gers`: look up a single feature by GERS ID.
+- `releases`: inspect available Overture releases.
+- `changelog`: query GERS feature changes across releases.
 
-To run the benchmarks locally:
+Run `overturemaps --help` for the full command tree.
 
-```bash
-uv sync --group dev
-pytest benchmarks/ -v
-```
+## Documentation
 
-## Development
-
-```bash
-uv sync
-uv run pytest tests/
-```
-
+- [CLI guide](docs/cli.md)
+- [Python API guide](docs/python-api.md)
+- [Performance notes](docs/performance.md)
+- [Contributing guide](CONTRIBUTING.md)
