@@ -19,3 +19,19 @@ def test_open_url_sends_application_user_agent(mocker):
     assert request.full_url == url
     assert request.get_header("User-agent") == "overturemaps/1.2.3"
     assert response is urlopen.return_value
+
+
+def test_open_url_uses_default_timeout(mocker):
+    urlopen = mocker.patch("overturemaps._http.urlopen")
+
+    _http.open_url("https://stac.overturemaps.org/catalog.json")
+
+    assert urlopen.call_args.kwargs["timeout"] == _http.DEFAULT_TIMEOUT
+
+
+def test_open_url_accepts_timeout_override(mocker):
+    urlopen = mocker.patch("overturemaps._http.urlopen")
+
+    _http.open_url("https://stac.overturemaps.org/catalog.json", timeout=5)
+
+    assert urlopen.call_args.kwargs["timeout"] == 5
