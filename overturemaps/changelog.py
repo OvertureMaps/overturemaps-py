@@ -17,13 +17,13 @@ from __future__ import annotations
 
 import io
 from typing import Optional
-from urllib.request import urlopen
 
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 import pyarrow.fs as fs
 import pyarrow.parquet as pq
 
+from ._http import open_url
 from .models import BBox
 
 # S3 path template for the changelog Parquet files
@@ -58,7 +58,7 @@ def _get_changelog_files_from_stac(
 
     try:
         # Try to read the STAC changelog index
-        with urlopen(stac_changelog_url) as response:
+        with open_url(stac_changelog_url, accept="application/octet-stream") as response:
             data = response.read()
             buffer = io.BytesIO(data)
             stac_table = pq.read_table(buffer)
