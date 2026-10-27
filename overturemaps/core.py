@@ -3,7 +3,6 @@ import json
 import sys
 from typing import List, Optional, Tuple
 from urllib.parse import urlparse
-from urllib.request import urlopen
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -11,6 +10,7 @@ import pyarrow.dataset as ds
 import pyarrow.fs as fs
 import pyarrow.parquet as pq
 
+from ._http import open_url
 from .models import BBox
 
 STAC_CATALOG_URL = "https://stac.overturemaps.org/catalog.json"
@@ -44,7 +44,7 @@ def _get_stac_catalog() -> dict:
         return _cached_stac_catalog
 
     try:
-        with urlopen(STAC_CATALOG_URL) as response:
+        with open_url(STAC_CATALOG_URL) as response:
             catalog = json.load(response)
 
         # Cache the catalog
@@ -151,7 +151,7 @@ def _get_files_from_stac(
     stac_url = f"https://stac.overturemaps.org/{release}/collections.parquet"
     try:
         # Arrow can't read HTTP URLs directly; read into memory first
-        with urlopen(stac_url) as response:
+        with open_url(stac_url) as response:
             data = response.read()
             buffer = io.BytesIO(data)
             stac_table = pq.read_table(buffer)
