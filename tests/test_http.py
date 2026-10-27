@@ -7,17 +7,18 @@ from overturemaps import _http
 
 def test_open_url_sends_application_user_agent(mocker):
     url = "https://stac.overturemaps.org/catalog.json"
-    version = mocker.patch("overturemaps._http.version", return_value="1.2.3")
+    mocker.patch("overturemaps._http.version", return_value="1.2.3")
+    mocker.patch("overturemaps._http.platform.python_version", return_value="3.12.0")
+    mocker.patch("overturemaps._http.platform.system", return_value="Linux")
     urlopen = mocker.patch("overturemaps._http.urlopen")
 
     response = _http.open_url(url)
 
-    version.assert_called_once_with("overturemaps")
     urlopen.assert_called_once()
     request = urlopen.call_args.args[0]
     assert isinstance(request, Request)
     assert request.full_url == url
-    assert request.get_header("User-agent") == "overturemaps/1.2.3"
+    assert request.get_header("User-agent") == "overturemaps/1.2.3 Python/3.12.0 (Linux)"
     assert response is urlopen.return_value
 
 
