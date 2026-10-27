@@ -36,3 +36,21 @@ def test_open_url_accepts_timeout_override(mocker):
     _http.open_url("https://stac.overturemaps.org/catalog.json", timeout=5)
 
     assert urlopen.call_args.kwargs["timeout"] == 5
+
+
+def test_open_url_sends_accept_header(mocker):
+    urlopen = mocker.patch("overturemaps._http.urlopen")
+
+    _http.open_url("https://stac.overturemaps.org/catalog.json", accept="application/json")
+
+    request = urlopen.call_args.args[0]
+    assert request.get_header("Accept") == "application/json"
+
+
+def test_open_url_omits_accept_header_by_default(mocker):
+    urlopen = mocker.patch("overturemaps._http.urlopen")
+
+    _http.open_url("https://stac.overturemaps.org/catalog.json")
+
+    request = urlopen.call_args.args[0]
+    assert request.get_header("Accept") is None

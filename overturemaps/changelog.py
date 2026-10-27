@@ -58,7 +58,7 @@ def _get_changelog_files_from_stac(
 
     try:
         # Try to read the STAC changelog index
-        with open_url(stac_changelog_url) as response:
+        with open_url(stac_changelog_url, accept="application/octet-stream") as response:
             data = response.read()
             buffer = io.BytesIO(data)
             stac_table = pq.read_table(buffer)

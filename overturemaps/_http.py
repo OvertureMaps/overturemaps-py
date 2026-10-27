@@ -14,7 +14,10 @@ def _user_agent() -> str:
     return f"overturemaps/{version('overturemaps')} Python/{python_version} ({system})"
 
 
-def open_url(url: str, timeout: Optional[int] = None):
+def open_url(url: str, timeout: Optional[int] = None, accept: Optional[str] = None):
     """Open a URL with an application User-Agent instead of urllib's default."""
-    request = Request(url, headers={"User-Agent": _user_agent()})
+    headers = {"User-Agent": _user_agent()}
+    if accept:
+        headers["Accept"] = accept
+    request = Request(url, headers=headers)
     return urlopen(request, timeout=timeout if timeout is not None else DEFAULT_TIMEOUT)

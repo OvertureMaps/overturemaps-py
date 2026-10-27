@@ -44,7 +44,7 @@ def _get_stac_catalog() -> dict:
         return _cached_stac_catalog
 
     try:
-        with open_url(STAC_CATALOG_URL) as response:
+        with open_url(STAC_CATALOG_URL, accept="application/json") as response:
             catalog = json.load(response)
 
         # Cache the catalog
@@ -151,7 +151,7 @@ def _get_files_from_stac(
     stac_url = f"https://stac.overturemaps.org/{release}/collections.parquet"
     try:
         # Arrow can't read HTTP URLs directly; read into memory first
-        with open_url(stac_url) as response:
+        with open_url(stac_url, accept="application/octet-stream") as response:
             data = response.read()
             buffer = io.BytesIO(data)
             stac_table = pq.read_table(buffer)
