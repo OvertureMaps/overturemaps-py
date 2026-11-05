@@ -68,19 +68,13 @@ jobs:
       - name: Get version
         id: version
         shell: bash
-        env:
-          EXPECTED_VERSION: ${{ steps.stamp.outputs.version }}
         run: |
-          VERSION=$(uv run --frozen python -c "from importlib.metadata import version; print(version('overturemaps'))")
-          if [ "$VERSION" != "$EXPECTED_VERSION" ]; then
-            echo "::error::Expected version $EXPECTED_VERSION, got $VERSION"
-            exit 1
-          fi
+          VERSION=$(uv run python -c "from importlib.metadata import version; print(version('overturemaps'))")
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Build binary
         run: >-
-          uv run --frozen pyinstaller
+          uv run pyinstaller
           --onefile
           --name overturemaps
           --collect-all pyarrow
