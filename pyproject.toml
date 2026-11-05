@@ -11,7 +11,7 @@ maintainers = [
 ]
 license = "MIT"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 keywords = ["geospatial", "mapping", "GIS", "geojson", "shapely", "parquet", "opendata", "overture", "maps"]
 dependencies = [
     "click>=8.3.0",
