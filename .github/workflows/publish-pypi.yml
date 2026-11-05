@@ -27,7 +27,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
           persist-credentials: false
 
       - name: Install uv
@@ -35,8 +34,51 @@ jobs:
         with:
           enable-cache: false
 
+      - name: Stamp version
+        id: stamp
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "release" ]; then
+            version="${TAG#v}"
+          else
+            version="0.0.0.dev${GITHUB_RUN_ID}${GITHUB_RUN_ATTEMPT}"
+          fi
+          uv version "$version" --frozen
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Build package
         run: uv build
+
+      - name: Check package metadata
+        run: uvx twine check --strict dist/*
+
+      - name: Check built versions
+        env:
+          EXPECTED_VERSION: ${{ steps.stamp.outputs.version }}
+        run: |
+          python - <<'PY'
+          import email
+          import os
+          import tarfile
+          import zipfile
+          from pathlib import Path
+
+          expected = os.environ["EXPECTED_VERSION"]
+          wheel, = Path("dist").glob("*.whl")
+          sdist, = Path("dist").glob("*.tar.gz")
+          with zipfile.ZipFile(wheel) as archive:
+              metadata, = (name for name in archive.namelist() if name.endswith(".dist-info/METADATA"))
+              wheel_version = email.message_from_bytes(archive.read(metadata))["Version"]
+          with tarfile.open(sdist) as archive:
+              metadata, = (member for member in archive.getmembers() if member.name.endswith("/PKG-INFO"))
+              with archive.extractfile(metadata) as stream:
+                  sdist_version = email.message_from_bytes(stream.read())["Version"]
+          for artifact, actual in ((wheel, wheel_version), (sdist, sdist_version)):
+              if actual != expected:
+                  raise SystemExit(f"{artifact}: expected version {expected}, got {actual}")
+              print(f"{artifact}: version {actual} matches {expected}")
+          PY
 
       - name: Upload dist artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -559,7 +559,7 @@ State file path = `{output_path}.state` (e.g. `boston.geojson.state`).
 
 - **Build backend**: `hatchling`
 - **Package manager / task runner**: `uv` + `just`
-- **Version source**: Git tags via `hatch-vcs`
+- **Version source**: Release tag stamped into `project.version` at build time; committed version is a `0.0.0` placeholder
 - **Release cadence**: Automatic on pushes to `main` when Conventional Commit titles require a bump
 - **PyPI package name**: `overturemaps`
 - **Standalone binaries**: Built via PyInstaller on release; attached to GitHub Release as assets for linux-x86_64, macos-arm64, macos-x86_64, windows-x86_64. Local build: `just build-binary`.
@@ -567,4 +567,6 @@ State file path = `{output_path}.state` (e.g. `boston.geojson.state`).
 
 Squash-merged PR titles use Conventional Commits to choose the next version. The release workflow
 creates a GitHub Release with generated notes. Publishing that release triggers the PyPI and binary
-workflows; Homebrew updates from PyPI.
+workflows; Homebrew updates from PyPI. Manual builds use a unique `0.0.0.dev<run_id><attempt>`
+version. The publishing workflow checks both distribution metadata and version consistency before
+uploading artifacts.

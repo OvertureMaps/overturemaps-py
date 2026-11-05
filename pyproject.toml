@@ -1,6 +1,7 @@
 [project]
 name = "overturemaps"
-dynamic = ["version"]
+# Release workflows stamp the tag's version into this placeholder before building.
+version = "0.0.0"
 description = "Python tools for interacting with Overture Maps (overturemaps.org) data."
 authors = [
     {name = "Jacob Wasserman", email = "jwasserman@meta.com"}
@@ -58,21 +59,9 @@ binary = [
     "pyinstaller-hooks-contrib>=2024.10",
 ]
 
-[tool.hatch.version]
-source = "vcs"
-
-[tool.hatch.version.raw-options]
-local_scheme = "no-local-version"
-
 [tool.semantic_release]
 commit_parser = "conventional"
 tag_format = "v{version}"
-
-[tool.uv]
-cache-keys = [
-    { file = "pyproject.toml" },
-    { git = { commit = true, tags = true } },
-]
 
 [tool.ruff]
 line-length = 100
@@ -81,5 +70,5 @@ line-length = 100
 select = ["F401"]  # unused imports
 
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = ["hatchling"]
 build-backend = "hatchling.build"

@@ -10,8 +10,7 @@ on:
     branches:
       - main
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: ${{ github.workflow }}
@@ -20,6 +19,7 @@ concurrency:
 jobs:
   release:
     name: Create release
+    if: github.repository == 'OvertureMaps/overturemaps-py'
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -41,7 +41,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
           persist-credentials: false
 
       - name: Install uv
@@ -49,19 +48,39 @@ jobs:
         with:
           enable-cache: false
 
+      - name: Stamp version
+        id: stamp
+        shell: bash
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "release" ]; then
+            version="${TAG#v}"
+          else
+            version="0.0.0.dev${GITHUB_RUN_ID}${GITHUB_RUN_ATTEMPT}"
+          fi
+          uv version "$version" --frozen
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Install dependencies
-        run: uv sync --group binary
+        run: uv sync --group binary --frozen
 
       - name: Get version
         id: version
         shell: bash
+        env:
+          EXPECTED_VERSION: ${{ steps.stamp.outputs.version }}
         run: |
-          VERSION=$(uv run python -c "from importlib.metadata import version; print(version('overturemaps'))")
+          VERSION=$(uv run --frozen python -c "from importlib.metadata import version; print(version('overturemaps'))")
+          if [ "$VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "::error::Expected version $EXPECTED_VERSION, got $VERSION"
+            exit 1
+          fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Build binary
         run: >-
-          uv run pyinstaller
+          uv run --frozen pyinstaller
           --onefile
           --name overturemaps
           --collect-all pyarrow
