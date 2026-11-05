@@ -1,6 +1,6 @@
 [project]
 name = "overturemaps"
-version = "1.0.3"
+dynamic = ["version"]
 description = "Python tools for interacting with Overture Maps (overturemaps.org) data."
 authors = [
     {name = "Jacob Wasserman", email = "jwasserman@meta.com"}
@@ -48,9 +48,30 @@ dev = [
     "pytest-benchmark>=5.0.0",
     "ruff>=0.4.0",
 ]
+release = [
+    "python-semantic-release==10.7.0",
+    # Security floor for the emSign ECC Root CA - G3 compromise (GHSA-6q48-6c7w-9gw2).
+    "certifi>=2026.10.19",
+]
 binary = [
     "pyinstaller>=6.0",
     "pyinstaller-hooks-contrib>=2024.10",
+]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+local_scheme = "no-local-version"
+
+[tool.semantic_release]
+commit_parser = "conventional"
+tag_format = "v{version}"
+
+[tool.uv]
+cache-keys = [
+    { file = "pyproject.toml" },
+    { git = { commit = true, tags = true } },
 ]
 
 [tool.ruff]
@@ -60,5 +81,5 @@ line-length = 100
 select = ["F401"]  # unused imports
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
