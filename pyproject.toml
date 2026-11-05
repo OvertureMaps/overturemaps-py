@@ -63,6 +63,9 @@ binary = [
 commit_parser = "conventional"
 tag_format = "v{version}"
 
+[tool.semantic_release.commit_parser_options]
+parse_squash_commits = false
+
 [tool.ruff]
 line-length = 100
 
