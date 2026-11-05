@@ -1,7 +1,7 @@
 # overturemaps-py — Project Specification
 
 **Version**: 0.21.0
-**Python**: ≥ 3.10
+**Python**: ≥ 3.11
 **License**: MIT
 **Maintainers**: Adam Lastowka, Dana Bauer (@overturemaps.org)
 
@@ -103,7 +103,7 @@ Serialization: `as_tuple()`, `as_dict()`, `from_dict()`.
 
 Values: `geojson`, `geojsonseq`, `geoparquet`.
 
-Python 3.10 compatible (StrEnum added in 3.11; shim required).
+Uses `enum.StrEnum` (Python ≥ 3.11).
 
 ### 3.4 `PipelineState` Dataclass
 
@@ -404,8 +404,8 @@ State file path = `{output_path}.state` (e.g. `boston.geojson.state`).
 
 ### 10.4 Compatibility
 
-- **Python**: 3.10, 3.11, 3.12, 3.13 (tested in CI matrix).
-- **StrEnum shim**: Python 3.10 compat required; do not use `enum.StrEnum` directly.
+- **Python**: 3.11, 3.12, 3.13, 3.14 (tested in CI matrix).
+- **StrEnum**: use stdlib `enum.StrEnum`.
 - **geopandas**: Optional extra. Library must import and function without it. `HAS_GEOPANDAS` flag gates all geopandas usage. Stub `GeoDataFrame` class prevents `NameError` at import time.
 
 ### 10.5 Observability
@@ -490,7 +490,7 @@ State file path = `{output_path}.state` (e.g. `boston.geojson.state`).
 ### 13.1 Test workflow
 
 - Triggers: push to `main`, PR to `main`.
-- Matrix: Python 3.10, 3.11, 3.12, 3.13.
+- Matrix: Python 3.11, 3.12, 3.13, 3.14.
 - Steps: checkout → setup-uv (with cache) → `uv sync --dev` → `pytest tests/ -v` → CLI smoke test.
 - Smoke test: Boston buildings download to file, format `geojson`.
 - Rollup job `are-we-good` must always run; blocks merge on any matrix failure.
@@ -532,7 +532,7 @@ State file path = `{output_path}.state` (e.g. `boston.geojson.state`).
 - **Type annotations**: all public API functions should have full type annotations. Internal helpers may be unannotated where obvious.
 - **Docstrings**: not required by convention. Add only where behavior is non-obvious (e.g. STAC fallback design, binary search invariants).
 - **No mutable default arguments**.
-- **StrEnum shim** must be tested for Python 3.10 behavior.
+- **StrEnum** string behavior (`str()`, lowercase auto values) must be tested.
 
 ### 14.2 Error handling principles
 
