@@ -559,13 +559,14 @@ State file path = `{output_path}.state` (e.g. `boston.geojson.state`).
 
 - **Build backend**: `hatchling`
 - **Package manager / task runner**: `uv` + `just`
-- **Version source**: `pyproject.toml` `version` field (not dynamic)
-- **Release cadence**: Tracks Overture Maps data releases (approximately monthly)
+- **Version source**: Release tag stamped into `project.version` at build time; committed version is a `0.0.0` placeholder
+- **Release cadence**: Automatic on pushes to `main` when Conventional Commit titles require a bump
 - **PyPI package name**: `overturemaps`
 - **Standalone binaries**: Built via PyInstaller on release; attached to GitHub Release as assets for linux-x86_64, macos-arm64, macos-x86_64, windows-x86_64. Local build: `just build-binary`.
 - **`python -m overturemaps`**: Supported via `overturemaps/__main__.py`; same entry point used by PyInstaller.
 
-Version bump checklist:
-1. Update `version` in `pyproject.toml`.
-2. Create GitHub release with matching tag.
-3. Publish workflow auto-triggers on release event.
+Squash-merged PR titles use Conventional Commits to choose the next version. The release workflow
+creates a GitHub Release with generated notes. Publishing that release triggers the PyPI and binary
+workflows; Homebrew updates from PyPI. Manual builds use a unique `0.0.0.dev<run_id><attempt>`
+version. The publishing workflow checks both distribution metadata and version consistency before
+uploading artifacts.

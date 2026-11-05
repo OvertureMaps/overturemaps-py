@@ -34,8 +34,31 @@ jobs:
         with:
           enable-cache: false
 
+      - name: Stamp version
+        id: stamp
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "release" ]; then
+            version="${TAG#v}"
+          else
+            version="0.0.0.dev${GITHUB_RUN_ID}${GITHUB_RUN_ATTEMPT}"
+          fi
+          uv version "$version" --frozen
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Build package
         run: uv build
+
+      - name: Check package metadata
+        run: uvx twine check --strict dist/*
+
+      - name: Check built versions
+        env:
+          EXPECTED_VERSION: ${{ steps.stamp.outputs.version }}
+        run: |
+          test -f "dist/overturemaps-${EXPECTED_VERSION}-py3-none-any.whl"
+          test -f "dist/overturemaps-${EXPECTED_VERSION}.tar.gz"
 
       - name: Upload dist artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

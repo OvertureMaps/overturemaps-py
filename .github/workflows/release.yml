@@ -1,0 +1,71 @@
+# Cuts a GitHub Release from Conventional Commits on every push to main.
+# Nothing is committed back to main; release notes are generated on the GitHub Release.
+#
+# The release is created with the overture-releaser GitHub App's token, not GITHUB_TOKEN:
+# GITHUB_TOKEN-created releases don't fire `release: published`.
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Create release
+    if: github.repository == 'OvertureMaps/overturemaps-py'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC access to the AWS role that reads the releaser app PEM
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-region: us-west-2
+          role-to-assume: arn:aws:iam::816069134238:role/gha-releaser-secrets-reader
+          role-session-name: GitHubActions_${{ github.job }}_${{ github.run_id }}
+
+      - name: Fetch releaser PEM from Secrets Manager
+        uses: aws-actions/aws-secretsmanager-get-secrets@2297f9a879480a9e3af9b293ed15c70caf8e1c88 # v3.0.2
+        with:
+          secret-ids: |
+            RELEASER_APP_PEM, omf-github-terraform/releaser/pem
+
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: Iv23lijru2e660v1zJQO # overture-releaser app ID, not sensitive
+          private-key: ${{ env.RELEASER_APP_PEM }} # zizmor: ignore[secrets-outside-env]
+          permission-contents: write
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          version=$(uv run --only-group release semantic-release version --print)
+          tag="v${version}"
+          if git rev-parse --verify --quiet "refs/tags/${tag}" >/dev/null; then
+            echo "${tag} already exists; no releasable commits."
+            exit 0
+          fi
+          gh release create "${tag}" --repo "${GITHUB_REPOSITORY}" --target "${GITHUB_SHA}" \
+            --title "${tag}" --generate-notes

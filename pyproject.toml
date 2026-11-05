@@ -1,6 +1,7 @@
 [project]
 name = "overturemaps"
-version = "1.0.3"
+# Release workflows stamp the tag's version into this placeholder before building.
+version = "0.0.0"
 description = "Python tools for interacting with Overture Maps (overturemaps.org) data."
 authors = [
     {name = "Jacob Wasserman", email = "jwasserman@meta.com"}
@@ -48,10 +49,22 @@ dev = [
     "pytest-benchmark>=5.0.0",
     "ruff>=0.4.0",
 ]
+release = [
+    "python-semantic-release==10.7.0",
+    # Security floor for the emSign ECC Root CA - G3 compromise (GHSA-6q48-6c7w-9gw2).
+    "certifi>=2026.10.19",
+]
 binary = [
     "pyinstaller>=6.0",
     "pyinstaller-hooks-contrib>=2024.10",
 ]
+
+[tool.semantic_release]
+commit_parser = "conventional"
+tag_format = "v{version}"
+
+[tool.semantic_release.commit_parser_options]
+parse_squash_commits = false
 
 [tool.ruff]
 line-length = 100

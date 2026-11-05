@@ -48,8 +48,22 @@ jobs:
         with:
           enable-cache: false
 
+      - name: Stamp version
+        id: stamp
+        shell: bash
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "release" ]; then
+            version="${TAG#v}"
+          else
+            version="0.0.0.dev${GITHUB_RUN_ID}${GITHUB_RUN_ATTEMPT}"
+          fi
+          uv version "$version" --frozen
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Install dependencies
-        run: uv sync --group binary
+        run: uv sync --group binary --frozen
 
       - name: Get version
         id: version
