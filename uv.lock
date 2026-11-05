@@ -311,7 +311,7 @@ wheels = [
 
 [[package]]
 name = "overturemaps"
-version = "1.0.2"
+version = "1.0.3"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
