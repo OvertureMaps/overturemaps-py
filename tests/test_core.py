@@ -1,18 +1,34 @@
 """Tests for pure (no-network) functions in core.py."""
 
+import inspect
+import io
+import time
+import warnings
+from concurrent.futures import ThreadPoolExecutor
+from urllib.error import HTTPError, URLError
+
 import pyarrow as pa
 import pytest
 
+from overturemaps import _http, core
 from overturemaps.core import (
+    StacIndexWarning,
     _binary_search_manifest,
     _coerce_bbox,
     _dataset_path,
+    _get_files_from_stac,
+    _get_stac_index,
+    count_rows,
     geoarrow_schema_adapter,
+    geodataframe,
     get_all_overture_types,
     get_available_releases,
+    record_batch_reader,
     type_theme_map,
 )
 from overturemaps.models import BBox
+
+from .fake_stac import OCEAN_BBOX, RELEASE, SF_BBOX, WEST_FILE, stac_index_bytes
 
 
 class TestCoerceBbox:
@@ -161,3 +177,142 @@ class TestGetAvailableReleases:
         releases, latest = get_available_releases()
         assert sorted(releases) == ["2026-07-22.0", "2026-08-19.0"]
         assert latest == "2026-08-19.0"
+
+
+class TestStacIndex:
+    def test_returns_only_files_that_intersect_bbox(self, stac_index):
+        files = _get_files_from_stac("buildings", "building", BBox(*SF_BBOX), RELEASE)
+        assert files == [WEST_FILE]
+
+    def test_returns_empty_list_when_nothing_intersects(self, stac_index):
+        assert _get_files_from_stac("buildings", "building", BBox(*OCEAN_BBOX), RELEASE) == []
+
+    def test_index_is_downloaded_once_per_release(self, stac_index):
+        _get_files_from_stac("buildings", "building", BBox(*SF_BBOX), RELEASE)
+        _get_files_from_stac("buildings", "building", BBox(*OCEAN_BBOX), RELEASE)
+        _get_files_from_stac("places", "place", BBox(*SF_BBOX), RELEASE)
+        assert stac_index.call_count == 1
+
+        _get_files_from_stac("buildings", "building", BBox(*SF_BBOX), "2026-09-23.0")
+        assert stac_index.call_count == 2
+        assert stac_index.call_args.args[0] == (
+            "https://stac.overturemaps.org/2026-09-23.0/collections.parquet"
+        )
+
+    def test_concurrent_queries_download_index_once(self, stac_index):
+        data = stac_index_bytes()
+
+        def slow_open_url(*args, **kwargs):
+            time.sleep(0.05)
+            return io.BytesIO(data)
+
+        stac_index.side_effect = slow_open_url
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(
+                pool.map(
+                    lambda _: _get_files_from_stac(
+                        "buildings", "building", BBox(*SF_BBOX), RELEASE
+                    ),
+                    range(16),
+                )
+            )
+
+        assert results == [[WEST_FILE]] * 16
+        assert stac_index.call_count == 1
+
+    def test_failed_download_is_not_cached(self, stac_index):
+        stac_index.side_effect = [URLError("simulated outage"), io.BytesIO(stac_index_bytes())]
+
+        with pytest.raises(URLError):
+            _get_stac_index(RELEASE)
+        assert _get_stac_index(RELEASE).num_rows == 3
+        assert stac_index.call_count == 2
+
+
+class TestStacByDefault:
+    @pytest.mark.parametrize("function", [count_rows, record_batch_reader, geodataframe])
+    def test_query_functions_use_stac_by_default(self, function):
+        assert inspect.signature(function).parameters["stac"].default is True
+
+    def test_bbox_query_reads_only_intersecting_files(self, stac_index, s3_dataset):
+        assert count_rows("building", bbox=SF_BBOX, release=RELEASE) == 42
+        assert s3_dataset.call_args.args[0] == [WEST_FILE]
+
+    def test_query_without_bbox_skips_index(self, stac_index, s3_dataset):
+        count_rows("building", release=RELEASE)
+        stac_index.assert_not_called()
+        assert s3_dataset.call_args.args[0] == _dataset_path("building", RELEASE)
+
+    def test_stac_false_skips_index(self, stac_index, s3_dataset):
+        count_rows("building", bbox=SF_BBOX, release=RELEASE, stac=False)
+        stac_index.assert_not_called()
+        assert s3_dataset.call_args.args[0] == _dataset_path("building", RELEASE)
+
+
+class TestStacFallback:
+    @pytest.mark.parametrize("function", [count_rows, record_batch_reader, geodataframe])
+    def test_unreadable_index_warns_and_scans_every_file(self, stac_index, s3_dataset, function):
+        if function is geodataframe:
+            pytest.importorskip("geopandas")
+            s3_dataset.return_value.to_batches.return_value = []
+        stac_index.side_effect = URLError("simulated outage")
+
+        with pytest.warns(StacIndexWarning, match="full scan") as caught:
+            function("building", bbox=SF_BBOX, release=RELEASE)
+
+        assert s3_dataset.call_args.args[0] == _dataset_path("building", RELEASE)
+        message = str(caught[0].message)
+        assert RELEASE in message
+        assert "simulated outage" in message
+        # The warning points at the caller, not at overturemaps internals.
+        assert caught[0].filename == __file__
+
+    def test_warning_filter_can_turn_fallback_into_an_error(self, stac_index, s3_dataset):
+        stac_index.side_effect = URLError("simulated outage")
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", StacIndexWarning)
+            with pytest.raises(StacIndexWarning):
+                count_rows("building", bbox=SF_BBOX, release=RELEASE)
+
+        s3_dataset.assert_not_called()
+
+    def test_rate_limited_index_is_retried_before_falling_back(
+        self, mocker, monkeypatch, s3_dataset
+    ):
+        monkeypatch.setattr(core, "_cached_stac_indexes", {})
+        sleep = mocker.patch("overturemaps._http.time.sleep")
+        urlopen = mocker.patch(
+            "overturemaps._http.urlopen",
+            side_effect=HTTPError("url", 429, "Too Many Requests", {}, None),
+        )
+
+        with pytest.warns(StacIndexWarning, match="HTTP Error 429"):
+            count_rows("building", bbox=SF_BBOX, release=RELEASE)
+
+        assert urlopen.call_count == _http.MAX_RETRIES + 1
+        assert sleep.call_count == _http.MAX_RETRIES
+        assert s3_dataset.call_args.args[0] == _dataset_path("building", RELEASE)
+
+
+class TestEmptyArea:
+    def test_count_rows_is_zero_without_reading_s3(self, stac_index, s3_dataset):
+        assert count_rows("building", bbox=OCEAN_BBOX, release=RELEASE) == 0
+        s3_dataset.assert_not_called()
+
+    def test_record_batch_reader_is_empty_with_type_schema(self, stac_index, s3_dataset):
+        reader = record_batch_reader("building", bbox=OCEAN_BBOX, release=RELEASE)
+
+        assert reader is not None
+        assert reader.schema.names == ["id", "geometry"]
+        assert reader.read_all().num_rows == 0
+        # Only the type's schema is read, from the full type path.
+        assert s3_dataset.call_args.args[0] == _dataset_path("building", RELEASE)
+
+    def test_geodataframe_is_empty_with_type_columns(self, stac_index, s3_dataset):
+        pytest.importorskip("geopandas")
+
+        gdf = geodataframe("building", bbox=OCEAN_BBOX, release=RELEASE)
+
+        assert len(gdf) == 0
+        assert list(gdf.columns) == ["id", "geometry"]

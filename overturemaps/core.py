@@ -1,6 +1,8 @@
 import io
 import json
 import sys
+import threading
+import warnings
 from typing import List, Optional, Tuple
 from urllib.parse import urlparse
 
@@ -14,9 +16,20 @@ from ._http import open_url
 from .models import BBox
 
 STAC_CATALOG_URL = "https://stac.overturemaps.org/catalog.json"
+STAC_INDEX_URL_TEMPLATE = "https://stac.overturemaps.org/{release}/collections.parquet"
 
 # Cache for STAC catalog to avoid repeated network calls
 _cached_stac_catalog = None
+
+# Cache for each release's STAC file index. A published release's index doesn't
+# change, so one download per release serves every bbox query in the process.
+_cached_stac_indexes: dict[str, pa.Table] = {}
+_stac_index_lock = threading.Lock()
+
+
+class StacIndexWarning(UserWarning):
+    """The STAC file index couldn't be read, so a query is scanning every file of its type."""
+
 
 # Allows for optional import of additional dependencies
 try:
@@ -142,19 +155,33 @@ def _coerce_bbox(
     )
 
 
+def _get_stac_index(release: str) -> pa.Table:
+    """
+    Fetch and cache the STAC-geoparquet index of a release's data files.
+
+    Failed downloads aren't cached, so the next call tries again.
+    """
+    with _stac_index_lock:
+        stac_table = _cached_stac_indexes.get(release)
+        if stac_table is None:
+            stac_url = STAC_INDEX_URL_TEMPLATE.format(release=release)
+            # Arrow can't read HTTP URLs directly; read into memory first
+            with open_url(stac_url, accept="application/octet-stream") as response:
+                data = response.read()
+            stac_table = pq.read_table(io.BytesIO(data))
+            _cached_stac_indexes[release] = stac_table
+        return stac_table
+
+
 def _get_files_from_stac(
     theme: str, overture_type: str, bbox: BBox, release: str
 ) -> Optional[List[str]]:
     """
-    Returns a list of bucket/key paths using the STAC-geoparquet index
+    Returns a list of bucket/key paths using the STAC-geoparquet index, or None
+    after a StacIndexWarning if the index can't be read
     """
-    stac_url = f"https://stac.overturemaps.org/{release}/collections.parquet"
     try:
-        # Arrow can't read HTTP URLs directly; read into memory first
-        with open_url(stac_url, accept="application/octet-stream") as response:
-            data = response.read()
-            buffer = io.BytesIO(data)
-            stac_table = pq.read_table(buffer)
+        stac_table = _get_stac_index(release)
 
         feature_type_filter = (pc.field("collection") == overture_type) & (
             pc.field("type") == "Feature"
@@ -182,13 +209,40 @@ def _get_files_from_stac(
             return s3_paths
         else:
             print(
-                f"No data found for release {release} in query bbox {bbox.as_tuple()}."
+                f"No data found for release {release} in query bbox {bbox.as_tuple()}.",
+                file=sys.stderr,
             )
             return []
 
     except Exception as e:
-        print(f"Error reading STAC index at {stac_url}: {e}")
+        warnings.warn(
+            f"Could not read the STAC index for release {release} ({e}). Falling back "
+            f"to a full scan of s3://{_dataset_path(overture_type, release)}, which "
+            "reads metadata from every file and can take several minutes. "
+            "Results are not affected.",
+            StacIndexWarning,
+            stacklevel=_caller_stacklevel(),
+        )
         return None
+
+
+def _caller_stacklevel() -> int:
+    """Return the warnings stacklevel of the first caller outside this module."""
+    frame = sys._getframe(1)
+    level = 1
+    while frame.f_back is not None and frame.f_globals.get("__name__") == __name__:
+        frame = frame.f_back
+        level += 1
+    return level
+
+
+def _s3_filesystem(connect_timeout=None, request_timeout=None) -> fs.S3FileSystem:
+    return fs.S3FileSystem(
+        anonymous=True,
+        region="us-west-2",
+        connect_timeout=connect_timeout,
+        request_timeout=request_timeout,
+    )
 
 
 def _record_batch_reader_from_dataset(
@@ -234,13 +288,14 @@ def _prepare_query(
     release=None,
     connect_timeout=None,
     request_timeout=None,
-    stac=False,
+    stac=True,
 ) -> Optional[Tuple[ds.Dataset, Optional[pc.Expression]]]:
     """
     Resolve the S3 dataset and filter expression for a given query.
 
     Returns the dataset and filter expression ready for counting or streaming,
-    or None if STAC reports no files intersect the bbox.
+    or None if STAC reports no files intersect the bbox. If the STAC index
+    can't be read, warns with StacIndexWarning and scans every file of the type.
     """
     if release is None:
         release = get_latest_release()
@@ -268,12 +323,7 @@ def _prepare_query(
 
     dataset = ds.dataset(
         intersecting_files if intersecting_files is not None else path,
-        filesystem=fs.S3FileSystem(
-            anonymous=True,
-            region="us-west-2",
-            connect_timeout=connect_timeout,
-            request_timeout=request_timeout,
-        ),
+        filesystem=_s3_filesystem(connect_timeout, request_timeout),
     )
 
     return dataset, filter_expr
@@ -285,7 +335,7 @@ def count_rows(
     release=None,
     connect_timeout=None,
     request_timeout=None,
-    stac=False,
+    stac=True,
 ) -> int:
     """Return the number of rows matching the given parameters."""
     result = _prepare_query(
@@ -304,14 +354,24 @@ def record_batch_reader(
     release=None,
     connect_timeout=None,
     request_timeout=None,
-    stac=False,
+    stac=True,
 ) -> Optional[pa.RecordBatchReader]:
     """Return a pyarrow RecordBatchReader for the desired bounding box and s3 path, or None on error."""
+    if release is None:
+        release = get_latest_release()
     result = _prepare_query(
         overture_type, bbox, release, connect_timeout, request_timeout, stac
     )
     if result is None:
-        return None
+        # No files intersect the bbox. Return an empty reader with the type's
+        # schema, the same result a full scan gives.
+        dataset = ds.dataset(
+            _dataset_path(overture_type, release),
+            filesystem=_s3_filesystem(connect_timeout, request_timeout),
+        )
+        return pa.RecordBatchReader.from_batches(
+            geoarrow_schema_adapter(dataset.schema), []
+        )
     dataset, filter_expr = result
     return _record_batch_reader_from_dataset(dataset, filter_expr=filter_expr)
 
@@ -322,7 +382,7 @@ def geodataframe(
     release: str = None,
     connect_timeout: int = None,
     request_timeout: int = None,
-    stac: bool = False,
+    stac: bool = True,
 ) -> GeoDataFrame:
     """
     Loads geoparquet for specified type into a geopandas dataframe
@@ -331,8 +391,12 @@ def geodataframe(
     ----------
     overture_type: type to load
     bbox: optional bounding box for data fetch (xmin, ymin, xmax, ymax)
+    release: optional release version, defaults to the latest
     connect_timeout: optional connection timeout in seconds
     request_timeout: optional request timeout in seconds
+    stac: use the STAC index to read only the files that intersect the bbox
+        (default True). If the index can't be read, a StacIndexWarning is
+        issued and every file of the type is scanned.
 
     Returns
     -------

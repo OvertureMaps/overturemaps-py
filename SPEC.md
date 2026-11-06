@@ -44,13 +44,14 @@ Models (models.py)           ← pure data classes, no I/O
 
 **Default path (STAC-accelerated)**:
 1. Fetch `https://stac.overturemaps.org/catalog.json` (in-process cached).
-2. Download `/{release}/collections.parquet` (column-pruned, spatially filtered).
+2. Download `/{release}/collections.parquet` (in-process cached per release, spatially filtered).
 3. Extract the list of Parquet file paths that intersect the query bbox.
 4. Open those files as a `pyarrow.dataset.Dataset` with row-level bbox predicate pushdown.
 5. Stream `RecordBatch` objects through writer.
 
 **Fallback path (no STAC)**:
 - `--no-stac` flag skips step 2–3; opens the full S3 partition directly.
+- If the index can't be read (after retrying HTTP 429/5xx), warns with `StacIndexWarning` and opens the full S3 partition.
 
 **GERS path**:
 1. Fetch STAC catalog → registry manifest (`[filename, max_id]` sorted list).
@@ -140,14 +141,14 @@ def record_batch_reader(
     release: str | None = None,
     connect_timeout: int | None = None,
     request_timeout: int | None = None,
-    stac: bool = False,
+    stac: bool = True,
 ) -> pyarrow.RecordBatchReader | None
 ```
 
-- Returns a streaming `RecordBatchReader`; returns `None` if no data matches.
+- Returns a streaming `RecordBatchReader`; it is empty if no data matches and `None` on read errors.
 - `bbox=None` queries globally (large data warning applies at CLI layer, not here).
 - `release=None` resolves to latest release.
-- When `stac=True`, uses STAC spatial index to minimize file scanning.
+- When `stac=True` (default), uses STAC spatial index to minimize file scanning.
 
 ### 4.2 `get_all_overture_types`
 
@@ -389,7 +390,8 @@ State file path = `{output_path}.state` (e.g. `boston.geojson.state`).
 ### 10.2 Reliability
 
 - **Anonymous S3**: No credentials to rotate, expire, or leak.
-- **STAC cache**: In-process only; no disk cache. TTL = process lifetime.
+- **STAC cache**: Catalog and per-release file index. In-process only; no disk cache. TTL = process lifetime.
+- **STAC retries**: HTTP 429 and 5xx are retried 3 times with exponential backoff, honouring `Retry-After` (at most 30 s per wait).
 - **Changelog fallback**: STAC stub failure is silent; direct S3 scan always attempted.
 - **Empty batch filtering**: Zero-row batches never passed to writers.
 - **State load failures**: Always `None`, never exception. Stale state = staleness check reports "update available", not a crash.
@@ -538,7 +540,7 @@ State file path = `{output_path}.state` (e.g. `boston.geojson.state`).
 
 - **Validate at CLI boundary**: bbox, release string, GERS UUID, format choice. Library functions trust their callers.
 - **Fail fast on invalid type**: `type` not in `type_theme_map` should raise `KeyError` immediately, not silently produce an empty result.
-- **No silent swallowing** except: `load_state` (missing/corrupt state is non-fatal by design), `release_exists` (network errors = False), STAC fallback (fallback is the contract).
+- **No silent swallowing** except: `load_state` (missing/corrupt state is non-fatal by design), `release_exists` (network errors = False), STAC fallback (fallback is the contract; the file-index fallback warns with `StacIndexWarning`).
 - **`RuntimeError` for unrecoverable catalog failures** (e.g. no releases found).
 
 ### 14.3 Output discipline
