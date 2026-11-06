@@ -33,9 +33,9 @@ print(gdf.head())
 
 ## STAC index
 
-When you pass a `bbox`, `record_batch_reader`, `geodataframe` and `overturemaps.core.count_rows` use the release's [STAC index](https://stac.overturemaps.org/) to read only the files that intersect it. The index is downloaded once per release and reused by later queries in the same process. Rate-limited (HTTP 429) and server error (5xx) responses are retried with backoff.
+When you pass a `bbox`, `record_batch_reader`, `geodataframe` and `overturemaps.core.count_rows` use the release's [STAC index](https://stac.overturemaps.org/) to read only the files that intersect it. The index is downloaded once per release and reused by later queries in the same process. If its download is rate limited (HTTP 429) or hits a server error (5xx), it's retried with backoff.
 
-If the index still can't be read, the query issues a `StacIndexWarning` and falls back to scanning every file of the type. Results are the same, but the scan can take several minutes. To fail instead:
+If the index still can't be read, or lists no files for the type, the query issues a `StacIndexWarning` and falls back to scanning every file of the type. Results are the same, but the scan can take several minutes. To fail instead:
 
 ```python
 import warnings

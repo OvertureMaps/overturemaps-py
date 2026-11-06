@@ -11,7 +11,8 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 DEFAULT_TIMEOUT = 30
-# HTTP 429 (rate limited) and 5xx responses are retried with exponential backoff.
+# Retries for callers that opt in: HTTP 429 (rate limited) and 5xx responses are
+# retried this many times, with exponential backoff.
 MAX_RETRIES = 3
 RETRY_BACKOFF = 1.0
 # Upper bound for a single wait, including one requested by a Retry-After header.
@@ -59,12 +60,12 @@ def open_url(
     url: str,
     timeout: Optional[int] = None,
     accept: Optional[str] = None,
-    retries: int = MAX_RETRIES,
+    retries: int = 0,
 ):
     """Open a URL with an application User-Agent instead of urllib's default.
 
-    HTTP 429 and 5xx responses are retried up to ``retries`` times with
-    exponential backoff, honouring the server's Retry-After header.
+    HTTP 429 and 5xx responses are retried up to ``retries`` times (none by
+    default) with exponential backoff, honouring the server's Retry-After header.
     """
     headers = {"User-Agent": _user_agent()}
     if accept:

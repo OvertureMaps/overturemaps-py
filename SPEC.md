@@ -51,7 +51,7 @@ Models (models.py)           ← pure data classes, no I/O
 
 **Fallback path (no STAC)**:
 - `--no-stac` flag skips step 2–3; opens the full S3 partition directly.
-- If the index can't be read (after retrying HTTP 429/5xx), warns with `StacIndexWarning` and opens the full S3 partition.
+- If the index can't be read (after retrying HTTP 429/5xx) or lists no files for the type, warns with `StacIndexWarning` and opens the full S3 partition.
 
 **GERS path**:
 1. Fetch STAC catalog → registry manifest (`[filename, max_id]` sorted list).
@@ -391,7 +391,7 @@ State file path = `{output_path}.state` (e.g. `boston.geojson.state`).
 
 - **Anonymous S3**: No credentials to rotate, expire, or leak.
 - **STAC cache**: Catalog and per-release file index. In-process only; no disk cache. TTL = process lifetime.
-- **STAC retries**: HTTP 429 and 5xx are retried 3 times with exponential backoff, honouring `Retry-After` (at most 30 s per wait).
+- **STAC index retries**: Downloads of a release's file index retry HTTP 429 and 5xx 3 times with exponential backoff, honouring `Retry-After` (at most 30 s per wait). Other STAC requests aren't retried.
 - **Changelog fallback**: STAC stub failure is silent; direct S3 scan always attempted.
 - **Empty batch filtering**: Zero-row batches never passed to writers.
 - **State load failures**: Always `None`, never exception. Stale state = staleness check reports "update available", not a crash.

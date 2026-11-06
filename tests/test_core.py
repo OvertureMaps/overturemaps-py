@@ -24,6 +24,7 @@ from overturemaps.core import (
     geodataframe,
     get_all_overture_types,
     get_available_releases,
+    get_latest_release,
     record_batch_reader,
     type_theme_map,
 )
@@ -365,6 +366,18 @@ class TestStacFallback:
 
         s3_dataset.assert_not_called()
 
+    def test_type_missing_from_index_warns_and_scans_every_file(
+        self, stac_index, s3_dataset, capsys
+    ):
+        # The fake index lists no water files.
+        with pytest.warns(StacIndexWarning, match="lists no water files") as caught:
+            assert count_rows("water", bbox=SF_BBOX, release=RELEASE) == 42
+
+        assert s3_dataset.call_args.args[0] == _dataset_path("water", RELEASE)
+        # Not reported as an empty area.
+        assert "No data found" not in capsys.readouterr().err
+        assert caught[0].filename == __file__
+
     def test_rate_limited_index_is_retried_before_falling_back(
         self, mocker, empty_stac_cache, s3_dataset
     ):
@@ -380,6 +393,20 @@ class TestStacFallback:
         assert urlopen.call_count == _http.MAX_RETRIES + 1
         assert sleep.call_count == _http.MAX_RETRIES
         assert s3_dataset.call_args.args[0] == _dataset_path("building", RELEASE)
+
+    def test_catalog_download_is_not_retried(self, mocker, monkeypatch):
+        monkeypatch.setattr("overturemaps.core._cached_stac_catalog", None)
+        sleep = mocker.patch("overturemaps._http.time.sleep")
+        urlopen = mocker.patch(
+            "overturemaps._http.urlopen",
+            side_effect=HTTPError("url", 429, "Too Many Requests", {}, None),
+        )
+
+        with pytest.raises(Exception, match="Could not fetch STAC catalog"):
+            get_latest_release()
+
+        assert urlopen.call_count == 1
+        sleep.assert_not_called()
 
     def test_concurrent_queries_share_one_failed_download(
         self, mocker, empty_stac_cache, s3_dataset, index_waiters
@@ -441,15 +468,6 @@ class TestEmptyArea:
         # without listing the type's folder or downloading the index again.
         assert s3_dataset.call_count == 1
         assert s3_dataset.call_args.args[0] == [WEST_FILE]
-        assert stac_index.call_count == 1
-
-    def test_empty_area_schema_falls_back_to_type_folder(self, stac_index, s3_dataset):
-        # The fake index lists no water files.
-        reader = record_batch_reader("water", bbox=SF_BBOX, release=RELEASE)
-
-        assert reader.read_all().num_rows == 0
-        assert s3_dataset.call_count == 1
-        assert s3_dataset.call_args.args[0] == _dataset_path("water", RELEASE)
         assert stac_index.call_count == 1
 
     def test_geodataframe_is_empty_with_type_columns(self, stac_index, s3_dataset):
