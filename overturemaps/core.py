@@ -3,6 +3,7 @@ import json
 import sys
 import threading
 import warnings
+from concurrent.futures import Future
 from typing import List, Optional, Tuple
 from urllib.parse import urlparse
 
@@ -24,6 +25,9 @@ _cached_stac_catalog = None
 # Cache for each release's STAC file index. A published release's index doesn't
 # change, so one download per release serves every bbox query in the process.
 _cached_stac_indexes: dict[str, pa.Table] = {}
+# Index downloads in progress, so concurrent queries for a release share one.
+_stac_index_downloads: dict[str, Future] = {}
+# Guards both dicts. Never held during a download.
 _stac_index_lock = threading.Lock()
 
 
@@ -159,18 +163,47 @@ def _get_stac_index(release: str) -> pa.Table:
     """
     Fetch and cache the STAC-geoparquet index of a release's data files.
 
-    Failed downloads aren't cached, so the next call tries again.
+    Concurrent calls for a release share one download, and all get its exception
+    if it fails. Failed downloads aren't cached, so a later call tries again.
     """
+    stac_table = _cached_stac_indexes.get(release)
+    if stac_table is not None:
+        return stac_table
+
     with _stac_index_lock:
         stac_table = _cached_stac_indexes.get(release)
-        if stac_table is None:
-            stac_url = STAC_INDEX_URL_TEMPLATE.format(release=release)
-            # Arrow can't read HTTP URLs directly; read into memory first
-            with open_url(stac_url, accept="application/octet-stream") as response:
-                data = response.read()
-            stac_table = pq.read_table(io.BytesIO(data))
-            _cached_stac_indexes[release] = stac_table
-        return stac_table
+        if stac_table is not None:
+            return stac_table
+        download = _stac_index_downloads.get(release)
+        is_downloader = download is None
+        if is_downloader:
+            download = _stac_index_downloads[release] = Future()
+
+    if not is_downloader:
+        return download.result()
+
+    try:
+        stac_table = _download_stac_index(release)
+    except BaseException as e:
+        # Hand over every exception, KeyboardInterrupt included, so waiters
+        # never hang. Later calls start a new download.
+        with _stac_index_lock:
+            _stac_index_downloads.pop(release, None)
+        download.set_exception(e)
+        raise
+    with _stac_index_lock:
+        _cached_stac_indexes[release] = stac_table
+        _stac_index_downloads.pop(release, None)
+    download.set_result(stac_table)
+    return stac_table
+
+
+def _download_stac_index(release: str) -> pa.Table:
+    stac_url = STAC_INDEX_URL_TEMPLATE.format(release=release)
+    # Arrow can't read HTTP URLs directly; read into memory first
+    with open_url(stac_url, accept="application/octet-stream") as response:
+        data = response.read()
+    return pq.read_table(io.BytesIO(data))
 
 
 def _get_files_from_stac(
@@ -183,9 +216,7 @@ def _get_files_from_stac(
     try:
         stac_table = _get_stac_index(release)
 
-        feature_type_filter = (pc.field("collection") == overture_type) & (
-            pc.field("type") == "Feature"
-        )
+        feature_type_filter = _stac_type_filter(overture_type)
 
         xmin, ymin, xmax, ymax = bbox.as_tuple()
         bbox_filter = (
@@ -199,14 +230,7 @@ def _get_files_from_stac(
         table = stac_table.filter(combined_filter)
 
         if table.num_rows > 0:
-            file_paths = table.column("assets").to_pylist()
-
-            # clip out the "s3://" prefix
-            s3_paths = [
-                path["aws"]["alternate"]["s3"]["href"][len("s3://") :]
-                for path in file_paths
-            ]
-            return s3_paths
+            return _s3_paths(table)
         else:
             print(
                 f"No data found for release {release} in query bbox {bbox.as_tuple()}.",
@@ -224,6 +248,40 @@ def _get_files_from_stac(
             stacklevel=_caller_stacklevel(),
         )
         return None
+
+
+def _stac_type_filter(overture_type: str) -> pc.Expression:
+    """Match the STAC index rows for the type's data files."""
+    return (pc.field("collection") == overture_type) & (pc.field("type") == "Feature")
+
+
+def _s3_paths(stac_items: pa.Table) -> List[str]:
+    """Return the bucket/key paths of the data files in STAC index rows."""
+    # clip out the "s3://" prefix
+    return [
+        assets["aws"]["alternate"]["s3"]["href"][len("s3://") :]
+        for assets in stac_items.column("assets").to_pylist()
+    ]
+
+
+def _type_schema(
+    overture_type: str, release: str, connect_timeout=None, request_timeout=None
+) -> pa.Schema:
+    """
+    Read the type's schema from one of its data files in the cached STAC index,
+    which is quicker than listing the type's folder. Falls back to the folder if
+    the index lists no file for the type. Never downloads the index.
+    """
+    source = _dataset_path(overture_type, release)
+    stac_table = _cached_stac_indexes.get(release)
+    if stac_table is not None:
+        stac_items = stac_table.filter(_stac_type_filter(overture_type))
+        if stac_items.num_rows > 0:
+            source = _s3_paths(stac_items.slice(0, 1))
+    dataset = ds.dataset(
+        source, filesystem=_s3_filesystem(connect_timeout, request_timeout)
+    )
+    return dataset.schema
 
 
 def _caller_stacklevel() -> int:
@@ -365,13 +423,8 @@ def record_batch_reader(
     if result is None:
         # No files intersect the bbox. Return an empty reader with the type's
         # schema, the same result a full scan gives.
-        dataset = ds.dataset(
-            _dataset_path(overture_type, release),
-            filesystem=_s3_filesystem(connect_timeout, request_timeout),
-        )
-        return pa.RecordBatchReader.from_batches(
-            geoarrow_schema_adapter(dataset.schema), []
-        )
+        schema = _type_schema(overture_type, release, connect_timeout, request_timeout)
+        return pa.RecordBatchReader.from_batches(geoarrow_schema_adapter(schema), [])
     dataset, filter_expr = result
     return _record_batch_reader_from_dataset(dataset, filter_expr=filter_expr)
 

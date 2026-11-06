@@ -2,15 +2,16 @@
 
 import inspect
 import io
+import threading
 import time
 import warnings
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from urllib.error import HTTPError, URLError
 
 import pyarrow as pa
 import pytest
 
-from overturemaps import _http, core
+from overturemaps import _http
 from overturemaps.core import (
     StacIndexWarning,
     _binary_search_manifest,
@@ -179,6 +180,20 @@ class TestGetAvailableReleases:
         assert latest == "2026-08-19.0"
 
 
+def _call_in_thread(function, *args, **kwargs) -> Future:
+    """Call function in a daemon thread, so a call that never returns can't hang the tests."""
+    outcome = Future()
+
+    def run():
+        try:
+            outcome.set_result(function(*args, **kwargs))
+        except BaseException as e:
+            outcome.set_exception(e)
+
+    threading.Thread(target=run, daemon=True).start()
+    return outcome
+
+
 class TestStacIndex:
     def test_returns_only_files_that_intersect_bbox(self, stac_index):
         files = _get_files_from_stac("buildings", "building", BBox(*SF_BBOX), RELEASE)
@@ -226,6 +241,79 @@ class TestStacIndex:
         with pytest.raises(URLError):
             _get_stac_index(RELEASE)
         assert _get_stac_index(RELEASE).num_rows == 3
+        assert stac_index.call_count == 2
+
+    def test_cached_release_is_not_blocked_by_another_download(self, stac_index):
+        _get_stac_index(RELEASE)
+        data = stac_index_bytes()
+        downloading, finish_download = threading.Event(), threading.Event()
+
+        def slow_open_url(*args, **kwargs):
+            downloading.set()
+            finish_download.wait(timeout=5)
+            return io.BytesIO(data)
+
+        stac_index.side_effect = slow_open_url
+        other_release = _call_in_thread(_get_stac_index, "2026-09-23.0")
+        try:
+            assert downloading.wait(timeout=5)
+            cached = _call_in_thread(_get_stac_index, RELEASE)
+            # Returns while the other release's download is still in progress.
+            assert cached.result(timeout=1).num_rows == 3
+        finally:
+            finish_download.set()
+        assert other_release.result(timeout=5).num_rows == 3
+        assert stac_index.call_count == 2
+
+    def test_waiting_callers_get_any_download_exception(self, stac_index, index_waiters):
+        class Interrupted(BaseException):
+            pass
+
+        interrupted = Interrupted()
+        all_waiting = threading.Event()
+
+        def interrupted_open_url(*args, **kwargs):
+            all_waiting.wait(timeout=5)
+            raise interrupted
+
+        stac_index.side_effect = interrupted_open_url
+        calls = [_call_in_thread(_get_stac_index, RELEASE) for _ in range(4)]
+        try:
+            for _ in range(3):
+                assert index_waiters.acquire(timeout=5), "callers didn't share the download"
+        finally:
+            all_waiting.set()
+
+        # Even a BaseException reaches every caller, so none is left waiting.
+        assert all(call.exception(timeout=5) is interrupted for call in calls)
+        assert stac_index.call_count == 1
+
+        stac_index.side_effect = lambda *args, **kwargs: io.BytesIO(stac_index_bytes())
+        assert _get_stac_index(RELEASE).num_rows == 3
+        assert stac_index.call_count == 2
+
+    def test_caller_after_a_failure_starts_a_new_download(self, mocker, stac_index):
+        notifying, finish_notifying = threading.Event(), threading.Event()
+
+        class SlowToNotify(Future):
+            def set_exception(self, exception):
+                notifying.set()
+                finish_notifying.wait(timeout=5)
+                super().set_exception(exception)
+
+        mocker.patch("overturemaps.core.Future", SlowToNotify)
+        stac_index.side_effect = [URLError("simulated outage"), io.BytesIO(stac_index_bytes())]
+
+        failed = _call_in_thread(_get_stac_index, RELEASE)
+        try:
+            assert notifying.wait(timeout=5)
+            # The failed download is still handing its error to waiters, but a new
+            # caller starts a fresh download instead of getting the stale error.
+            assert _call_in_thread(_get_stac_index, RELEASE).result(timeout=1).num_rows == 3
+        finally:
+            finish_notifying.set()
+        with pytest.raises(URLError):
+            failed.result(timeout=5)
         assert stac_index.call_count == 2
 
 
@@ -278,9 +366,8 @@ class TestStacFallback:
         s3_dataset.assert_not_called()
 
     def test_rate_limited_index_is_retried_before_falling_back(
-        self, mocker, monkeypatch, s3_dataset
+        self, mocker, empty_stac_cache, s3_dataset
     ):
-        monkeypatch.setattr(core, "_cached_stac_indexes", {})
         sleep = mocker.patch("overturemaps._http.time.sleep")
         urlopen = mocker.patch(
             "overturemaps._http.urlopen",
@@ -294,6 +381,50 @@ class TestStacFallback:
         assert sleep.call_count == _http.MAX_RETRIES
         assert s3_dataset.call_args.args[0] == _dataset_path("building", RELEASE)
 
+    def test_concurrent_queries_share_one_failed_download(
+        self, mocker, empty_stac_cache, s3_dataset, index_waiters
+    ):
+        callers = 8
+        all_waiting = threading.Event()
+
+        def rate_limited(request, *args, **kwargs):
+            all_waiting.wait(timeout=5)
+            raise HTTPError(request.full_url, 429, "Too Many Requests", {}, None)
+
+        urlopen = mocker.patch("overturemaps._http.urlopen", side_effect=rate_limited)
+        sleep = mocker.patch("overturemaps._http.time.sleep")
+        core_warnings = mocker.patch("overturemaps.core.warnings")
+
+        queries = [
+            _call_in_thread(count_rows, "building", bbox=SF_BBOX, release=RELEASE)
+            for _ in range(callers)
+        ]
+        try:
+            for _ in range(callers - 1):
+                assert index_waiters.acquire(timeout=5), "callers didn't share the download"
+        finally:
+            all_waiting.set()
+
+        assert [query.result(timeout=5) for query in queries] == [42] * callers
+        # One retry sequence in total, not one per caller.
+        assert urlopen.call_count == _http.MAX_RETRIES + 1
+        assert sleep.call_count == _http.MAX_RETRIES
+        # Every caller still warns and scans the type's folder.
+        warn_calls = core_warnings.warn.call_args_list
+        assert len(warn_calls) == callers
+        assert all(call.args[1] is StacIndexWarning for call in warn_calls)
+        assert all("HTTP Error 429" in call.args[0] for call in warn_calls)
+        assert [call.args[0] for call in s3_dataset.call_args_list] == [
+            _dataset_path("building", RELEASE)
+        ] * callers
+
+        # The failure isn't cached, so the next query downloads the index again.
+        data = stac_index_bytes()
+        urlopen.side_effect = lambda *args, **kwargs: io.BytesIO(data)
+        assert count_rows("building", bbox=SF_BBOX, release=RELEASE) == 42
+        assert urlopen.call_count == _http.MAX_RETRIES + 2
+        assert s3_dataset.call_args.args[0] == [WEST_FILE]
+
 
 class TestEmptyArea:
     def test_count_rows_is_zero_without_reading_s3(self, stac_index, s3_dataset):
@@ -306,8 +437,20 @@ class TestEmptyArea:
         assert reader is not None
         assert reader.schema.names == ["id", "geometry"]
         assert reader.read_all().num_rows == 0
-        # Only the type's schema is read, from the full type path.
-        assert s3_dataset.call_args.args[0] == _dataset_path("building", RELEASE)
+        # The schema comes from one of the type's files in the cached index,
+        # without listing the type's folder or downloading the index again.
+        assert s3_dataset.call_count == 1
+        assert s3_dataset.call_args.args[0] == [WEST_FILE]
+        assert stac_index.call_count == 1
+
+    def test_empty_area_schema_falls_back_to_type_folder(self, stac_index, s3_dataset):
+        # The fake index lists no water files.
+        reader = record_batch_reader("water", bbox=SF_BBOX, release=RELEASE)
+
+        assert reader.read_all().num_rows == 0
+        assert s3_dataset.call_count == 1
+        assert s3_dataset.call_args.args[0] == _dataset_path("water", RELEASE)
+        assert stac_index.call_count == 1
 
     def test_geodataframe_is_empty_with_type_columns(self, stac_index, s3_dataset):
         pytest.importorskip("geopandas")
