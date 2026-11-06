@@ -1,9 +1,29 @@
 """Tests for the changelog module."""
 
+from urllib.error import HTTPError
+
 import pytest
-from overturemaps.changelog import query_changelog_ids, summarize_changelog
+from overturemaps.changelog import (
+    _get_changelog_files_from_stac,
+    query_changelog_ids,
+    summarize_changelog,
+)
 from overturemaps.models import BBox
 from overturemaps.releases import get_latest_release
+
+
+def test_changelog_index_download_is_not_retried(mocker):
+    sleep = mocker.patch("overturemaps._http.time.sleep")
+    urlopen = mocker.patch(
+        "overturemaps._http.urlopen",
+        side_effect=HTTPError("url", 429, "Too Many Requests", {}, None),
+    )
+
+    bbox = BBox(xmin=-71.068, ymin=42.353, xmax=-71.058, ymax=42.363)
+    # None means the query falls back to scanning the changelog folder.
+    assert _get_changelog_files_from_stac("buildings", "building", bbox, "2026-10-21.0") is None
+    assert urlopen.call_count == 1
+    sleep.assert_not_called()
 
 
 @pytest.mark.integration

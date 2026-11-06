@@ -31,6 +31,22 @@ gdf = geodataframe("building", bbox=bbox)
 print(gdf.head())
 ```
 
+## STAC index
+
+When you pass a `bbox`, `record_batch_reader`, `geodataframe` and `overturemaps.core.count_rows` use the release's [STAC index](https://stac.overturemaps.org/) to read only the files that intersect it. The index is downloaded once per release and reused by later queries in the same process. If its download is rate limited (HTTP 429) or hits a server error (5xx), it's retried with backoff.
+
+If the index still can't be read, or lists no files for the type, the query issues a `StacIndexWarning` and falls back to scanning every file of the type. Results are the same, but the scan can take several minutes. To fail instead:
+
+```python
+import warnings
+
+from overturemaps.core import StacIndexWarning
+
+warnings.simplefilter("error", StacIndexWarning)
+```
+
+Pass `stac=False` to skip the index and scan every file.
+
 ## Writing formats
 
 Use `get_writer` and `copy` from `overturemaps.writers` to write data to GeoJSON, GeoJSONSeq, or GeoParquet without using the CLI.

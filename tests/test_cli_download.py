@@ -1,5 +1,6 @@
 """Tests for download CLI command."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,8 @@ from overturemaps.cli import (
     _bbox_area_sq_deg,
     cli,
 )
+
+from .fake_stac import OCEAN_BBOX, RELEASE
 
 
 class _DummyWriter:
@@ -255,3 +258,29 @@ def test_download_invalid_release_explains_retention_policy(monkeypatch):
     assert "60 days" in result.output
     assert "2026-03-18.0" in result.output
     assert "docs.overturemaps.org/release-calendar" in result.output
+
+
+def test_download_empty_area_keeps_stdout_valid_geojson(monkeypatch, stac_index, s3_dataset):
+    """When no files intersect the bbox, stdout holds only an empty FeatureCollection."""
+    monkeypatch.setattr(
+        "overturemaps.cli.get_available_releases", lambda: ([RELEASE], RELEASE)
+    )
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "download",
+            "-f",
+            "geojson",
+            "-t",
+            "building",
+            "-r",
+            RELEASE,
+            "--bbox",
+            ",".join(str(v) for v in OCEAN_BBOX),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {"type": "FeatureCollection", "features": []}
+    assert "No data found" in result.stderr
