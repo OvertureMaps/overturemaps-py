@@ -129,7 +129,7 @@ jobs:
     name: Comment on released PRs
     needs: [release, publish]
     if: needs.release.outputs.tag != ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     permissions:
       contents: read
       issues: write # comment on and label closed issues
