@@ -26,6 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
     permissions:
       contents: read
       id-token: write # OIDC access to the AWS role that reads the releaser app PEM
@@ -76,6 +77,7 @@ jobs:
           gh release create "${tag}" --repo "${GITHUB_REPOSITORY}" --target "${GITHUB_SHA}" \
             --title "${tag}" --generate-notes --draft
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
 
   binaries:
     name: Build binaries
@@ -122,3 +124,26 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           TAG: ${{ needs.release.outputs.tag }}
         run: gh release edit "${TAG}" --repo "${GITHUB_REPOSITORY}" --draft=false --latest
+
+  notify:
+    name: Comment on released PRs
+    needs: [release, publish]
+    if: needs.release.outputs.tag != ''
+    runs-on: ubuntu-slim
+    permissions:
+      contents: read
+      issues: write # comment on and label closed issues
+      pull-requests: write # comment on and label released PRs
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Comment on released PRs and issues
+        uses: lowlysre/psr-success-comment@9d3379b775ba7f6fd8b10e5b3dd8a4afe289ceb5 # v1.0.0
+        with:
+          tag: ${{ needs.release.outputs.tag }}
+          version: ${{ needs.release.outputs.version }}
+          release-url: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.release.outputs.tag }}
