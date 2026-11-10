@@ -1,12 +1,16 @@
 ---
 # Builds standalone binaries for Linux, macOS (arm64 + x86_64), and Windows.
-# On release: attaches binaries directly to the GitHub Release as assets.
+# On workflow_call (from release.yml): attaches binaries to the draft GitHub Release as assets.
 # On workflow_dispatch: uploads binaries as workflow artifacts for inspection.
 name: Build Binaries
 
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        description: Draft release tag to upload binaries to (e.g. v1.2.3)
+        required: true
+        type: string
   workflow_dispatch:
 
 permissions:
@@ -52,9 +56,9 @@ jobs:
         id: stamp
         shell: bash
         env:
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ inputs.tag }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = "release" ]; then
+          if [ -n "$TAG" ]; then
             version="${TAG#v}"
           else
             version="0.0.0.dev${GITHUB_RUN_ID}${GITHUB_RUN_ATTEMPT}"
@@ -99,12 +103,12 @@ jobs:
         run: |
           "$BINARY_PATH" --help
 
-      - name: Upload to release
-        if: github.event_name == 'release'
+      - name: Upload to draft release
+        if: inputs.tag != ''
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag }}
         run: gh release upload "$TAG" "$BINARY_PATH" --clobber
 
       - name: Upload artifact (dry run)
