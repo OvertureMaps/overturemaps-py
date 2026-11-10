@@ -64,6 +64,32 @@ def test_load_state_invalid_json():
         Path(temp_path).unlink()
 
 
+def test_load_state_wrong_shape_json_returns_none(tmp_path):
+    """Valid JSON with the wrong shape is treated as no usable state."""
+    state_path = tmp_path / "test.state"
+    state_path.write_text("[1, 2, 3]")
+    assert load_state(state_path) is None
+
+
+def test_load_state_unknown_backend_returns_none(tmp_path):
+    """A state file naming an unknown backend is treated as unusable."""
+    state_path = tmp_path / "test.state"
+    state_path.write_text(
+        json.dumps(
+            {
+                "last_release": "2024-11-13.0",
+                "last_run": "2024-11-13T12:00:00Z",
+                "theme": "buildings",
+                "type": "building",
+                "bbox": None,
+                "backend": "bogus",
+                "output": "/tmp/output.geojson",
+            }
+        )
+    )
+    assert load_state(state_path) is None
+
+
 def test_save_state_creates_parent_directory():
     """Test that save_state creates parent directories if needed."""
     with tempfile.TemporaryDirectory() as tmpdir:

@@ -28,7 +28,8 @@ def load_state(state_path: Path | str) -> Optional[PipelineState]:
         state_path: Path to the state file.
 
     Returns:
-        PipelineState object if file exists, None otherwise.
+        PipelineState object if file exists and holds valid state,
+        None otherwise.
     """
     state_path = Path(state_path)
     if not state_path.exists():
@@ -38,7 +39,14 @@ def load_state(state_path: Path | str) -> Optional[PipelineState]:
         with open(state_path, "r") as f:
             data = json.load(f)
         return PipelineState.from_dict(data)
-    except (json.JSONDecodeError, KeyError, FileNotFoundError):
+    except (
+        json.JSONDecodeError,
+        KeyError,
+        FileNotFoundError,
+        AttributeError,
+        TypeError,
+        ValueError,
+    ):
         return None
 
 
