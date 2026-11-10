@@ -25,6 +25,7 @@ jobs:
     if: github.repository == 'OvertureMaps/overturemaps-py'
     runs-on: ubuntu-latest
     outputs:
+      created: ${{ steps.release.outputs.created }}
       tag: ${{ steps.release.outputs.tag }}
       version: ${{ steps.release.outputs.version }}
     permissions:
@@ -68,21 +69,25 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
+          # semantic-release also writes tag/version to GITHUB_OUTPUT, even with no release;
+          # `created` is the only reliable signal that a draft exists.
           version=$(uv run --only-group release semantic-release version --print)
           tag="v${version}"
           if git rev-parse --verify --quiet "refs/tags/${tag}" >/dev/null; then
             echo "${tag} already exists; no releasable commits."
+            echo "created=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           gh release create "${tag}" --repo "${GITHUB_REPOSITORY}" --target "${GITHUB_SHA}" \
             --title "${tag}" --generate-notes --draft
+          echo "created=true" >> "$GITHUB_OUTPUT"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
   binaries:
     name: Build binaries
     needs: release
-    if: needs.release.outputs.tag != ''
+    if: needs.release.outputs.created == 'true'
     permissions:
       contents: write # upload assets to the draft release
     uses: $/.github/workflows/build-binaries.yml
@@ -92,7 +97,7 @@ jobs:
   publish:
     name: Publish release
     needs: [release, binaries]
-    if: needs.release.outputs.tag != ''
+    if: needs.release.outputs.created == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -128,7 +133,7 @@ jobs:
   notify:
     name: Comment on released PRs
     needs: [release, publish]
-    if: needs.release.outputs.tag != ''
+    if: needs.release.outputs.created == 'true'
     runs-on: ubuntu-slim
     permissions:
       contents: read
