@@ -23,11 +23,14 @@ This repository uses squash merges so the PR title is the commit message read by
 workflow. Release notes are published on the GitHub Release; no version commit or `CHANGELOG.md`
 is written back to `main`.
 
-Publishing a GitHub Release triggers the following:
+The release workflow creates a draft GitHub Release, runs the build-binaries workflow to build
+cross-OS binaries and attach them to the draft, then publishes the release. Releases are immutable
+once published, so binaries must be attached before that step.
+
+Publishing the GitHub Release triggers the following:
 
 - The publish-pypi workflow builds the package and publishes to PyPI in the
   [`pypi` GitHub environment](https://github.com/OvertureMaps/overturemaps-py/deployments).
-- The build-binaries workflow builds cross-OS binaries and attaches them to the release.
 - `brew`'s BrewTestBot scans PyPI every 3 hours and updates our
   [Homebrew formula](https://github.com/Homebrew/homebrew-core/blob/main/Formula/o/overturemaps.rb).
 
