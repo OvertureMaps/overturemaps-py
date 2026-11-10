@@ -16,6 +16,10 @@ on:
 permissions:
   contents: read # default; job overrides to write for release asset upload
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     name: Build ${{ matrix.target }}

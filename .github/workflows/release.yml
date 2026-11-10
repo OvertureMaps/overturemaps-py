@@ -83,7 +83,7 @@ jobs:
     if: needs.release.outputs.tag != ''
     permissions:
       contents: write # upload assets to the draft release
-    uses: ./.github/workflows/build-binaries.yml
+    uses: $/.github/workflows/build-binaries.yml
     with:
       tag: ${{ needs.release.outputs.tag }}
 
