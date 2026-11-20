@@ -2,4 +2,4 @@
 * @overturemaps/omf-public-reviewers
 
 # GitHub Actions, workflows, and repo configuration
-/.github/** @lowlydba @overturemaps/omf-public-reviewers
+/.github/** @lowlydba @overturemaps/omf-public-reviewers @OvertureMaps/overture-devops-reviewers
