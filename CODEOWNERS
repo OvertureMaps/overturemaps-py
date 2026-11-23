@@ -3,3 +3,6 @@
 
 # GitHub Actions, workflows, and repo configuration
 /.github/** @lowlydba @overturemaps/omf-public-reviewers @OvertureMaps/overture-devops-reviewers
+
+uv.lock @OvertureMaps/overture-devops-reviewers
+pyproject.toml @OvertureMaps/overture-devops-reviewers
